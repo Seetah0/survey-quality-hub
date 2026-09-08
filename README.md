@@ -47,7 +47,13 @@ node scripts/additional-integration.mjs
 
 PowerPoint يستخدم الشرائح والماستر والألوان والزخارف الأصلية من القالب المرفق بعد حذف النصوص التجريبية. عدد الشرائح يتغير حسب البيانات. Word تقرير قابل للتحرير بهوية لونية متناسقة؛ لم يُقدَّم قالب Word مستقل.
 
-التعليقات تُحلل وصفيًا بتكرار الإجابات والكلمات، دون إرسالها إلى خدمة ذكاء اصطناعي خارجية أو ادعاء تحليل المشاعر. التصدير يعرض أكثر الإجابات تكرارًا ويصرّح بذلك.
+تصدير CES يتبع لكل مقرر: Course Summary ثم Previous Action Plan إذا قُدّمت بمصدر، ثم Implementation، ثم Proposed Action Plan، ثم CES Mean Values مع رسم، ثم CES Cumulative Values مع رسم، ثم Improvement/Priority عند الحاجة. بعد جميع المقررات تأتي Strengths وAreas for Improvement وPriority Courses وProposed Improvement Plan وEnd of Report.
+
+الرسوم عناصر PowerPoint أصلية وليست صورًا، ولكل رسم مصنف Excel مضمّن بالقيم غير المقرّبة وعدد الإجابات الصحيحة. الجداول والنصوص قابلة للتحرير. القيم غير المتاحة تبقى فراغات في الرسم والمصنف ولا تصبح أصفارًا. Cumulative في هذا التقرير هو نسبة الإجابات الإيجابية وليس مجموعًا تراكميًا.
+
+تُنشأ خطة مقترحة من نتائج كل استبيان مؤكد. في CES تغطي جميع الأسئلة الضعيفة؛ وعند غيابها تقترح تعزيز أقل النتائج المقبولة أو المحافظة على الأداء. لا يُختلق تنفيذ سابق أو مسؤول أو موعد معتمد. تعرض صفحة التصدير عدد الشرائح والرسوم والمقررات وأولوية التحسين ومطابقة البيانات وحالة مراجعة التصميم. مراجعة المصدر والتصميم لا تعني اعتماد الخطة من المستخدم.
+
+التعليقات تُحلل وصفيًا في الواجهة بتكرار الإجابات والكلمات، دون إرسالها إلى خدمة ذكاء اصطناعي خارجية أو ادعاء تحليل المشاعر. تقرير Word يعرض أكثر الإجابات تكرارًا ويصرّح بذلك؛ PowerPoint يتبع البنية الموضحة أعلاه.
 
 ## الحفظ والحدود
 
@@ -66,3 +72,5 @@ PowerPoint يستخدم الشرائح والماستر والألوان وال�
 A private bilingual survey analysis application with server-side anonymous workspaces, Excel ingestion, weighted metrics, hierarchical CES analysis, quality reconciliation, historical source-value registers, and editable PPTX/DOCX exports. No automatic deployment is configured. Source spreadsheets and personal responses are excluded from version control.
 
 The Excel parser uses the [official SheetJS 0.20.3 distribution](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/). The checked-in report theme is a sanitized extraction of the user-supplied PowerPoint template; it is already ready for builds. `scripts/prepare-theme.mjs` is only needed when replacing that theme.
+
+The native chart template was authored with the presentation artifact runtime and sanitized before check-in. Builds use `lib/report-chart-theme.json` directly. Its optional preparation script requires the private authoring bundle, not survey data. `scripts/ces-export-test.mjs` verifies both language exports against a local `CES_FIXTURE`, including every native chart cache and embedded workbook. No private fixture is uploaded to CI.

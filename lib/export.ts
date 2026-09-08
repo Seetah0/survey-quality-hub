@@ -14,6 +14,12 @@ import {
 } from 'docx';
 import theme from './report-theme.json';
 import { type Analysis, type Group, type Lang, formatMetric } from './analysis';
+import {
+  buildSurveyReport,
+  type ReportPage,
+  type ReportOptions,
+} from './report-model';
+import { nativeChart, nativeTable } from './native-evidence';
 const xml = (v: string | number | null | undefined) =>
   String(v ?? '')
     // oxlint-disable-next-line no-control-regex -- XML 1.0 forbids these control bytes.
@@ -32,16 +38,7 @@ const xml = (v: string | number | null | undefined) =>
 const A = 'http://schemas.openxmlformats.org/drawingml/2006/main',
   P = 'http://schemas.openxmlformats.org/presentationml/2006/main',
   R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-type Page = {
-  title: string;
-  subtitle?: string;
-  lines?: string[];
-  headers?: string[];
-  rows?: string[][];
-  widths?: number[];
-  rowHeights?: number[];
-  cover?: boolean;
-};
+type Page = ReportPage;
 function paginateTables(pages: Page[]): Page[] {
   return pages.flatMap((page) => {
     if (!page.rows?.length || !page.headers) return [page];
@@ -95,7 +92,46 @@ export function selectGroup(analysis: Analysis, id?: string) {
   }
   throw new Error('NOT_FOUND');
 }
-export function reportPages(a: Analysis, lang: Lang, groupId?: string): Page[] {
+export function reportPages(
+  a: Analysis,
+  lang: Lang,
+  groupId?: string,
+  options: ReportOptions = {},
+): Page[] {
+  if (a.kind === 'raw')
+    return paginateTables(buildSurveyReport(a, lang, groupId, options));
+  const pages = legacyReportPages(a, lang, groupId);
+  pages.push({
+    section: 'proposed-improvement-plan',
+    title:
+      lang === 'ar'
+        ? 'خطة تحسين جودة البيانات'
+        : 'Data Quality Improvement Plan',
+    lines:
+      lang === 'ar'
+        ? [
+            'توحيد عناوين الأسئلة والسنوات والتحقق من أخطاء Excel المبلغ عنها.',
+            'استكمال أعداد المستجيبين وتعريف المقاييس قبل المقارنة بين السنوات.',
+            'المسؤول والموعد يُحددان بعد الاعتماد. القيم التاريخية وحدها لا تثبت تنفيذ إجراء أو أثره.',
+          ]
+        : [
+            'Standardize question labels and years and investigate reported Excel errors.',
+            'Complete respondent counts and scale definitions before comparing years.',
+            'Owner and deadline require approval. Historical aggregates alone do not establish implementation or impact.',
+          ],
+  });
+  pages.push({
+    section: 'end',
+    title: lang === 'ar' ? 'نهاية التقرير' : 'End of Report',
+    cover: true,
+  });
+  return pages;
+}
+export function legacyReportPages(
+  a: Analysis,
+  lang: Lang,
+  groupId?: string,
+): Page[] {
   const t = (ar: string, en: string) => (lang === 'ar' ? ar : en),
     f = (n: number | null, d = 2) => formatMetric(n, d, lang),
     pct = (n: number | null) => (n === null ? f(null) : f(n, 1) + '%');
@@ -346,17 +382,6 @@ function textShape(
     )
     .join('')}</p:txBody></p:sp>`;
 }
-function rect(
-  id: number,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  color: string,
-) {
-  const e = (n: number) => Math.round(n * 914400);
-  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Cell ${id}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${e(x)}" y="${e(y)}"/><a:ext cx="${e(w)}" cy="${e(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>`;
-}
 export async function makePptx(pages: Page[], lang: Lang) {
   const zip = new JSZip();
   const paths: string[] = [];
@@ -375,9 +400,11 @@ export async function makePptx(pages: Page[], lang: Lang) {
       'slideMaster',
       'slideMasters/slideMaster1.xml',
     );
-  pages.forEach((page, i) => {
+  let chartCount = 0;
+  for (const [i, page] of pages.entries()) {
     let shape = 1001,
       body = '';
+    let extraRels = '';
     if (page.cover) {
       body += textShape(
         shape++,
@@ -439,43 +466,82 @@ export async function makePptx(pages: Page[], lang: Lang) {
           '57667B',
         );
       let y = 2.27;
-      if (page.headers && page.rows?.length) {
+      if (page.chart) {
+        chartCount++;
+        const chart = await nativeChart(page.chart, lang, chartCount);
+        zip.file(`ppt/charts/chart${chartCount}.xml`, chart.chart);
+        zip.file(
+          `ppt/charts/_rels/chart${chartCount}.xml.rels`,
+          chart.relationship,
+        );
+        zip.file(`ppt/embeddings/chart${chartCount}.xlsx`, chart.workbook);
+        paths.push(`ppt/charts/chart${chartCount}.xml`);
+        extraRels += rel(
+          'rIdChart',
+          'chart',
+          `../charts/chart${chartCount}.xml`,
+        );
+        body += chart.frame;
+        const values = page.chart.values.map((v) =>
+          v === null
+            ? lang === 'ar'
+              ? 'غير متاح'
+              : 'N/A'
+            : formatMetric(v, page.chart!.metric === 'mean' ? 2 : 1, lang) +
+              (page.chart!.metric === 'positivity' ? '%' : ''),
+        );
+        const rows = [
+          ['Q', ...page.chart.categories],
+          [page.chart.metric === 'mean' ? 'Mean' : '%', ...values],
+          ['n', ...page.chart.valid.map(String)],
+        ];
+        body += nativeTable(
+          shape++,
+          rows,
+          [
+            0.6,
+            ...page.chart.categories.map(
+              () => 8 / page.chart!.categories.length,
+            ),
+          ],
+          [0.31, 0.31, 0.31],
+          lang,
+          5.8,
+          8,
+          0.95,
+          'en',
+        );
+        body += textShape(
+          shape++,
+          lang === 'ar'
+            ? 'n = الإجابات الصحيحة لكل سؤال. النتائج الأقل من 10 تُفسر بحذر.'
+            : 'n = valid answers per question. Interpret results below 10 cautiously.',
+          1.02,
+          6.78,
+          8.42,
+          0.23,
+          9,
+          lang,
+        );
+      } else if (page.headers && page.rows?.length) {
         const widths =
           page.widths ||
           (page.headers.length === 4
             ? [4.8, 1.1, 1.1, 1.6]
             : page.headers.map(() => 8.6 / page.headers!.length));
-        const lines = [page.headers, ...page.rows];
-        for (let ri = 0; ri < lines.length; ri++) {
-          let x = 0.95;
-          const rowHeight = ri === 0 ? 0.48 : page.rowHeights?.[ri - 1] || 0.48;
-          for (let ci = 0; ci < lines[ri].length; ci++) {
-            const idx = lang === 'ar' ? lines[ri].length - 1 - ci : ci;
-            const w = widths[idx] || 2;
-            body += rect(
-              shape++,
-              x,
-              y,
-              w,
-              rowHeight,
-              ri === 0 ? '32395A' : ri % 2 ? 'F1F4F8' : 'FFFFFF',
-            );
-            body += textShape(
-              shape++,
-              lines[ri][idx],
-              x + 0.03,
-              y + 0.045,
-              w - 0.06,
-              rowHeight - 0.08,
-              ri === 0 ? 12 : 11,
-              lang,
-              ri === 0 ? 'FFFFFF' : '1D1E34',
-              ri === 0,
-            );
-            x += w;
-          }
-          y += rowHeight;
-        }
+        const heights = [
+          0.48,
+          ...page.rows.map((_, i) => page.rowHeights?.[i] || 0.48),
+        ];
+        body += nativeTable(
+          shape++,
+          [page.headers, ...page.rows],
+          widths,
+          heights,
+          lang,
+          y,
+        );
+        y += heights.reduce((s, h) => s + h, 0);
       }
       if (page.lines) {
         body += textShape(
@@ -501,6 +567,22 @@ export async function makePptx(pages: Page[], lang: Lang) {
         '57667B',
       );
     }
+    if (page.notes) {
+      extraRels += rel(
+        'rIdNotes',
+        'notesSlide',
+        `../notesSlides/notesSlide${i + 1}.xml`,
+      );
+      zip.file(
+        `ppt/notesSlides/notesSlide${i + 1}.xml`,
+        `<p:notes xmlns:a="${A}" xmlns:r="${R}" xmlns:p="${P}"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes"/><p:cNvSpPr/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${xml(page.notes)}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`,
+      );
+      zip.file(
+        `ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels`,
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel('rId1', 'slide', `../slides/slide${i + 1}.xml`)}</Relationships>`,
+      );
+      paths.push(`ppt/notesSlides/notesSlide${i + 1}.xml`);
+    }
     const base = page.cover ? theme.cover : theme.content;
     zip.file(
       `ppt/slides/slide${i + 1}.xml`,
@@ -508,7 +590,10 @@ export async function makePptx(pages: Page[], lang: Lang) {
     );
     zip.file(
       `ppt/slides/_rels/slide${i + 1}.xml.rels`,
-      page.cover ? theme.coverRels : theme.contentRels,
+      (page.cover ? theme.coverRels : theme.contentRels).replace(
+        '</Relationships>',
+        extraRels + '</Relationships>',
+      ),
     );
     slideList += `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`;
     presentationRels += rel(
@@ -517,7 +602,7 @@ export async function makePptx(pages: Page[], lang: Lang) {
       `slides/slide${i + 1}.xml`,
     );
     paths.push(`ppt/slides/slide${i + 1}.xml`);
-  });
+  }
   zip.file(
     'ppt/presentation.xml',
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:presentation xmlns:a="${A}" xmlns:r="${R}" xmlns:p="${P}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slideList}</p:sldIdLst><p:sldSz cx="9144000" cy="6858000" type="screen4x3"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`,
@@ -531,27 +616,31 @@ export async function makePptx(pages: Page[], lang: Lang) {
     `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel('rId1', 'officeDocument', 'ppt/presentation.xml')}</Relationships>`,
   );
   const typeFor = (p: string) =>
-    p.includes('/slides/')
-      ? 'slide'
-      : p.includes('/slideMasters/')
-        ? 'slideMaster'
-        : p.includes('/slideLayouts/')
-          ? 'slideLayout'
-          : p.includes('/theme/')
-            ? 'theme'
-            : null;
+    p.includes('/charts/')
+      ? 'chart'
+      : p.includes('/notesSlides/')
+        ? 'notesSlide'
+        : p.includes('/slides/')
+          ? 'slide'
+          : p.includes('/slideMasters/')
+            ? 'slideMaster'
+            : p.includes('/slideLayouts/')
+              ? 'slideLayout'
+              : p.includes('/theme/')
+                ? 'theme'
+                : null;
   const overrides = paths
     .filter((p) => !p.endsWith('.rels'))
     .map((p) => {
       const type = typeFor(p);
       return type
-        ? `<Override PartName="/${p}" ContentType="application/vnd.openxmlformats-officedocument.${type === 'theme' ? 'theme' : `presentationml.${type}`}+xml"/>`
+        ? `<Override PartName="/${p}" ContentType="application/vnd.openxmlformats-officedocument.${type === 'theme' ? 'theme' : type === 'chart' ? 'drawingml.chart' : `presentationml.${type}`}+xml"/>`
         : '';
     })
     .join('');
   zip.file(
     '[Content_Types].xml',
-    `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>${overrides}</Types>`,
+    `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>${overrides}</Types>`,
   );
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
 }

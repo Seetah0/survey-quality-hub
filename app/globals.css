@@ -856,3 +856,29 @@ button[data-slot='button'] {
     display: none;
   }
 }
+.report-overview {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #d2dbe5;
+}
+.report-counts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-block: 1rem;
+}
+.report-counts dt {
+  color: #57667b;
+  font-size: 0.9rem;
+}
+.report-counts dd {
+  color: #32395a;
+  font-size: 1.7rem;
+  font-weight: 700;
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .report-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

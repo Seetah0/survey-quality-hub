@@ -1,20 +1,28 @@
 import { mergeAnalyses, type Lang } from '@/lib/analysis';
-import { makeDocx, makePptx, reportPages } from '@/lib/export';
+import {
+  makeDocx,
+  makePptx,
+  reportPages,
+  legacyReportPages,
+} from '@/lib/export';
+import { reportManifest } from '@/lib/report-model';
 import {
   assertOrigin,
   errorResponse,
   readReport,
   workspace,
+  response,
 } from '@/lib/storage';
 export async function POST(request: Request) {
   const w = await workspace(request);
   try {
     assertOrigin(request);
-    const { ids, format, lang, groupId } = (await request.json()) as {
+    const { ids, format, lang, groupId, preview } = (await request.json()) as {
       ids: string[];
       format: string;
       lang: Lang;
       groupId?: string;
+      preview?: boolean;
     };
     if (
       !Array.isArray(ids) ||
@@ -28,8 +36,13 @@ export async function POST(request: Request) {
     for (const id of ids) items.push((await readReport(id, w.owner)).analysis);
     const a = items.length === 1 ? items[0] : mergeAnalyses(items);
     if (a.needsConfirmation) throw new Error('CONFIRM_REQUIRED');
-    const pages = reportPages(a, lang, groupId);
+    const pages =
+      format === 'docx'
+        ? legacyReportPages(a, lang, groupId)
+        : reportPages(a, lang, groupId);
     if (pages.length > 800) throw new Error('EXPORT_TOO_LARGE');
+    const manifest = reportManifest(a, pages, groupId);
+    if (preview === true) return response({ manifest }, 200, w.cookie);
     const bytes =
       format === 'pptx'
         ? await makePptx(pages, lang)
@@ -43,6 +56,9 @@ export async function POST(request: Request) {
         'Content-Disposition': `attachment; filename="survey-quality-report-${lang}.${format}"`,
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
+        'X-Report-Slides': String(manifest.slides),
+        'X-Report-Charts': String(manifest.charts),
+        'X-Report-Courses': String(manifest.courses),
       },
     });
   } catch (e) {

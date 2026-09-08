@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ExportOverview } from '@/components/export-overview';
 import {
   Activity,
   BarChart3,
@@ -2498,8 +2499,8 @@ export default function Hub() {
 
                     <p>
                       {t(
-                        'قالب التقرير المرفق · 4:3 · شرائح ديناميكية حسب البيانات',
-                        'Your supplied template · 4:3 · slides generated from the data',
+                        'قالبك الأصلي، ورسوم وبيانات قابلة للتعديل، وخطط تحسين مقترحة من النتائج.',
+                        'Your original template, editable charts and data, and improvement plans proposed from the results.',
                       )}
                     </p>
 
@@ -2559,7 +2560,12 @@ export default function Hub() {
                     </Button>
                   </div>
                 </div>
-
+                <ExportOverview
+                  ids={ids}
+                  groupId={groupId}
+                  lang={lang}
+                  disabled={analysis.needsConfirmation}
+                />
                 {analysis.needsConfirmation && (
                   <p className="alert warning">
                     {t(
