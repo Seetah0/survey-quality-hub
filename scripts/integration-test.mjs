@@ -85,7 +85,7 @@ for (const lang of ['ar', 'en'])
       assert.match(pres, /9144000/);
       assert.match(pres, /6858000/);
       const slide = await zip.file('ppt/slides/slide2.xml').async('string');
-      assert.match(slide, lang === 'ar' ? /ملخص النتائج/ : /Results overview/);
+      assert.match(slide, lang === 'ar' ? /ملخص التقرير/ : /Report Overview/);
       assert.ok(zip.file('ppt/slideMasters/slideMaster1.xml'));
     } else assert.ok(zip.file('word/document.xml'));
     await fs.writeFile(path.join(out, `report-${lang}.${format}`), b);

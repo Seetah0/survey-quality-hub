@@ -18,6 +18,7 @@ export const reports = sqliteTable(
     kind: text('kind').notNull(),
     rows: integer('rows').notNull(),
     status: text('status').notNull(),
+    analysisJson: text('analysis_json'),
   },
   (t) => [
     index('reports_owner_created').on(t.owner, t.createdAt),

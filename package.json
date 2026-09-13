@@ -9,12 +9,12 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint app components/hub.tsx lib db scripts tests",
+    "lint": "oxlint app components/hub.tsx components/export-overview.tsx lib db scripts tests",
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate",
     "db:local": "wrangler d1 migrations apply DB --local --config wrangler.local.jsonc",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/analysis.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
