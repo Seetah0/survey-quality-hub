@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import type { Analysis } from './analysis';
+
 export type ReportRecord = {
   id: string;
   owner: string;
@@ -11,35 +12,48 @@ export type ReportRecord = {
   kind: string;
   rows: number;
   status: string;
+  analysis_json: string | null;
 };
+
 export function bindings() {
-  const { DB, FILES } = env as unknown as { DB: D1Database; FILES: R2Bucket };
-  if (!DB || !FILES) throw new Error('STORAGE_UNAVAILABLE');
-  return { DB, FILES };
+  const { DB } = env as unknown as { DB: D1Database };
+
+  if (!DB) throw new Error('STORAGE_UNAVAILABLE');
+
+  return { DB };
 }
+
 export async function digest(bytes: Uint8Array | string) {
   const b = typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes;
+
   return [
-    ...new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(b))),
+    ...new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new Uint8Array(b)),
+    ),
   ]
     .map((v) => v.toString(16).padStart(2, '0'))
     .join('');
 }
+
 export async function workspace(request: Request) {
   const secure = new URL(request.url).protocol === 'https:';
   const cookieName = secure ? '__Host-sqh_workspace' : 'sqh_workspace';
+
   const token = request.headers
     .get('cookie')
     ?.split(';')
     .map((s) => s.trim())
     .find((s) => s.startsWith(cookieName + '='))
     ?.split('=')[1];
+
   const existing = token && /^[a-f0-9]{64}$/.test(token);
+
   const value = existing
     ? token
     : [...crypto.getRandomValues(new Uint8Array(32))]
         .map((v) => v.toString(16).padStart(2, '0'))
         .join('');
+
   return {
     owner: await digest(value),
     cookie: existing
@@ -47,6 +61,7 @@ export async function workspace(request: Request) {
       : `${cookieName}=${value}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000${secure ? '; Secure' : ''}`,
   };
 }
+
 export function response(
   data: unknown,
   status = 200,
@@ -57,32 +72,56 @@ export function response(
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
   };
+
   if (cookie) headers['Set-Cookie'] = cookie;
-  return new Response(JSON.stringify(data), { status, headers });
+
+  return new Response(JSON.stringify(data), {
+    status,
+    headers,
+  });
 }
+
 export function assertOrigin(request: Request) {
   const origin = request.headers.get('origin');
+
   if (
     request.headers.get('sec-fetch-site') === 'cross-site' ||
     (origin && origin !== new URL(request.url).origin)
-  )
+  ) {
     throw new Error('FORBIDDEN');
+  }
 }
+
 export async function readReport(id: string, owner: string) {
-  if (!/^[a-f0-9-]{36}$/.test(id)) throw new Error('NOT_FOUND');
-  const { DB, FILES } = bindings();
+  if (!/^[a-f0-9-]{36}$/.test(id)) {
+    throw new Error('NOT_FOUND');
+  }
+
+  const { DB } = bindings();
+
   const row = await DB.prepare(
     'SELECT * FROM reports WHERE id = ? AND owner = ?',
   )
     .bind(id, owner)
     .first<ReportRecord>();
-  if (!row) throw new Error('NOT_FOUND');
-  const obj = await FILES.get(`${owner}/${id}/analysis.json`);
-  if (!obj) throw new Error('NOT_FOUND');
-  return { record: row, analysis: await obj.json<Analysis>() };
+
+  if (!row || !row.analysis_json) {
+    throw new Error('NOT_FOUND');
+  }
+
+  return {
+    record: row,
+    analysis: JSON.parse(row.analysis_json) as Analysis,
+  };
 }
-export function errorResponse(error: unknown, cookie: string | null = null) {
-  const message = error instanceof Error ? error.message : 'ANALYSIS_FAILED';
+
+export function errorResponse(
+  error: unknown,
+  cookie: string | null = null,
+) {
+  const message =
+    error instanceof Error ? error.message : 'ANALYSIS_FAILED';
+
   const allowed = [
     'INVALID_SCALE',
     'INVALID_WORKBOOK',
@@ -104,12 +143,22 @@ export function errorResponse(error: unknown, cookie: string | null = null) {
     'TOO_MANY_FILES',
     'EXPORT_TOO_LARGE',
     'EXPORT_TEXT_TOO_LONG',
+    'STORAGE_UNAVAILABLE',
   ];
-  const code = allowed.includes(message) ? message : 'ANALYSIS_FAILED';
+
+  const code = allowed.includes(message)
+    ? message
+    : 'ANALYSIS_FAILED';
+
   console.error('Survey operation failed:', code);
+
   return response(
     { error: code },
-    code === 'NOT_FOUND' ? 404 : code === 'FORBIDDEN' ? 403 : 400,
+    code === 'NOT_FOUND'
+      ? 404
+      : code === 'FORBIDDEN'
+        ? 403
+        : 400,
     cookie,
   );
 }
