@@ -6,8 +6,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "site-creator-d1",
-      "database_id": "00000000-0000-4000-8000-000000000000",
+      "database_name": "survey-quality-seetah-db",
+      "database_id": "1eacdfa5-46e9-4067-b030-0dc8bfc8651f",
       "migrations_dir": "drizzle"
     }
   ]
