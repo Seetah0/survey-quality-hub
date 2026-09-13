@@ -246,7 +246,10 @@ export default function Hub() {
     [max, setMax] = useState('5'),
     [positive, setPositive] = useState('4'),
     [kinds, setKinds] = useState<Record<string, QuestionKind>>({}),
-    [resultView, setResultView] = useState('questions');
+    [resultView, setResultView] = useState('questions'),
+    [temporaryFileIds, setTemporaryFileIds] = useState<Set<string>>(
+      () => new Set(),
+    );
 
   const initialization = useRef<Promise<Report[]> | null>(null);
 
@@ -412,6 +415,11 @@ export default function Hub() {
          * It is required only if confirmation/re-analysis is needed.
          */
         temporaryFiles.current.set(data.id, files[i]);
+        setTemporaryFileIds((current) => {
+          const next = new Set(current);
+          next.add(data.id);
+          return next;
+        });
 
         if (data.duplicate) {
           duplicates++;
@@ -441,6 +449,12 @@ export default function Hub() {
 
         if (report && report.status !== 'confirmation') {
           temporaryFiles.current.delete(id);
+          setTemporaryFileIds((current) => {
+            if (!current.has(id)) return current;
+            const next = new Set(current);
+            next.delete(id);
+            return next;
+          });
         }
       }
 
@@ -532,6 +546,12 @@ export default function Hub() {
 
       if (!data.analysis.needsConfirmation) {
         temporaryFiles.current.delete(id);
+        setTemporaryFileIds((current) => {
+          if (!current.has(id)) return current;
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
 
         setNotice(
           t(
@@ -955,10 +975,9 @@ export default function Hub() {
           )}
 
           {notice && (
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- This live region contains block content.
             <div
               className="alert success"
-              role="status"
+              aria-live="polite"
             >
               <CheckCircle2 />
               <p>{notice}</p>
@@ -966,10 +985,9 @@ export default function Hub() {
           )}
 
           {busy && (
-            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- Progress contains a block element.
             <div
               className="loading"
-              role="status"
+              aria-live="polite"
             >
               <LoaderCircle className="spin" />
 
@@ -1010,10 +1028,9 @@ export default function Hub() {
                 </div>
 
                 {!workspaceReady && (
-                  // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- This live region includes an interactive retry control.
                   <div
                     className="privacy-note"
-                    role="status"
+                    aria-live="polite"
                   >
                     {t(
                       'جارٍ تجهيز مساحة حفظ النتائج…',
@@ -1479,7 +1496,7 @@ export default function Hub() {
                     </div>
 
                     {ids.length === 1 &&
-                      !temporaryFiles.current.has(
+                      !temporaryFileIds.has(
                         ids[0],
                       ) && (
                         <p className="scope-note">
