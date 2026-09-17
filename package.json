@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
-    "lint": "oxlint app components/hub.tsx components/export-overview.tsx lib db scripts tests",
+    "lint": "oxlint app components/hub.tsx components/export-overview.tsx components/quality-portal.tsx lib db scripts tests",
     "format": "oxfmt",
     "db:generate": "drizzle-kit generate",
     "db:local": "wrangler d1 migrations apply DB --local --config wrangler.local.jsonc",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@base-ui/react": "1.7.0",
     "@shadcn/react": "0.3.0",
+    "@xmldom/xmldom": "0.9.12",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
