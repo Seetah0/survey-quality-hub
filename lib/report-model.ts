@@ -1,6 +1,9 @@
 import type { Analysis, Group, Lang, Metric, Question } from './analysis';
 
 export type ReportChart = {
+  label?: string;
+  note?: string;
+  sampleLabel?: string;
   metric: 'mean' | 'positivity';
   categories: string[];
   values: (number | null)[];

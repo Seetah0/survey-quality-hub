@@ -12,7 +12,7 @@ import {
   HeadingLevel,
   PageBreak,
 } from 'docx';
-import theme from './report-theme.json';
+import theme from './report-theme.json' with { type: 'json' };
 import { type Analysis, type Group, type Lang, formatMetric } from './analysis';
 import {
   buildSurveyReport,
@@ -39,7 +39,7 @@ const A = 'http://schemas.openxmlformats.org/drawingml/2006/main',
   P = 'http://schemas.openxmlformats.org/presentationml/2006/main',
   R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 type Page = ReportPage;
-function paginateTables(pages: Page[]): Page[] {
+export function paginateTables(pages: Page[]): Page[] {
   return pages.flatMap((page) => {
     if (!page.rows?.length || !page.headers) return [page];
     const widths =
@@ -492,8 +492,11 @@ export async function makePptx(pages: Page[], lang: Lang) {
         );
         const rows = [
           ['Q', ...page.chart.categories],
-          [page.chart.metric === 'mean' ? 'Mean' : '%', ...values],
-          ['n', ...page.chart.valid.map(String)],
+          [
+            page.chart.label || (page.chart.metric === 'mean' ? 'Mean' : '%'),
+            ...values,
+          ],
+          [page.chart.sampleLabel || 'n', ...page.chart.valid.map(String)],
         ];
         body += nativeTable(
           shape++,
@@ -513,9 +516,10 @@ export async function makePptx(pages: Page[], lang: Lang) {
         );
         body += textShape(
           shape++,
-          lang === 'ar'
-            ? 'n = الإجابات الصحيحة لكل سؤال. النتائج الأقل من 10 تُفسر بحذر.'
-            : 'n = valid answers per question. Interpret results below 10 cautiously.',
+          page.chart.note ||
+            (lang === 'ar'
+              ? 'n = الإجابات الصحيحة لكل سؤال. النتائج الأقل من 10 تُفسر بحذر.'
+              : 'n = valid answers per question. Interpret results below 10 cautiously.'),
           1.02,
           6.78,
           8.42,
@@ -668,6 +672,39 @@ export async function makeDocx(pages: Page[], lang: Lang) {
     children.push(paragraph(p.title, true));
     if (p.subtitle) children.push(paragraph(p.subtitle));
     for (const line of p.lines || []) children.push(paragraph(line));
+    if (p.chart) {
+      const rows = [
+        [
+          lang === 'ar' ? 'البند' : 'Item',
+          p.chart.label || (p.chart.metric === 'positivity' ? '%' : 'Mean'),
+          p.chart.sampleLabel || 'n',
+        ],
+        ...p.chart.categories.map((c, i) => [
+          c,
+          p.chart!.values[i] === null ? '—' : String(p.chart!.values[i]),
+          String(p.chart!.valid[i]),
+        ]),
+      ];
+      children.push(
+        new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: rows.map(
+            (row, i) =>
+              new TableRow({
+                tableHeader: i === 0,
+                children: (rtl ? [...row].reverse() : row).map(
+                  (cell) =>
+                    new TableCell({
+                      children: [paragraph(cell)],
+                      shading: { fill: i === 0 ? 'D2DBE5' : 'FFFFFF' },
+                    }),
+                ),
+              }),
+          ),
+        }),
+      );
+      if (p.chart.note) children.push(paragraph(p.chart.note));
+    }
     if (p.headers && p.rows?.length) {
       children.push(
         new Table({
@@ -691,7 +728,7 @@ export async function makeDocx(pages: Page[], lang: Lang) {
     }
   }
   return new Uint8Array(
-    await Packer.toBuffer(
+    await Packer.toArrayBuffer(
       new Document({
         creator: 'Survey Quality Hub',
         title: 'Survey Quality Report',
