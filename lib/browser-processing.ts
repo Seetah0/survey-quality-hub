@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+// Vite provides a virtual default export for ?worker imports.
+// oxlint-disable-next-line import/default
 import PortalWorker from './portal.worker.ts?worker';
 
 export function processInBrowser<T>(
