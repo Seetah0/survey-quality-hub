@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import templates from './report-chart-theme.json';
+import templates from './report-chart-theme.json' with { type: 'json' };
 import type { Lang } from './analysis';
 import type { ReportChart } from './report-model';
 const C = 'http://schemas.openxmlformats.org/drawingml/2006/chart';
@@ -74,13 +74,15 @@ export async function nativeChart(
   const count = data.categories.length,
     end = count + 1,
     format = positive ? '0.0%' : '0.00';
-  const label = positive
-    ? lang === 'ar'
-      ? 'الإيجابية'
-      : 'Positive responses'
-    : lang === 'ar'
-      ? 'المتوسط'
-      : 'Mean';
+  const label =
+    data.label ||
+    (positive
+      ? lang === 'ar'
+        ? 'الإيجابية'
+        : 'Positive responses'
+      : lang === 'ar'
+        ? 'المتوسط'
+        : 'Mean');
   const category = `<c:cat><c:strRef><c:f>'Chart Data'!$A$2:$A$${end}</c:f><c:strCache><c:ptCount val="${count}"/>${data.categories.map((q, i) => `<c:pt idx="${i}"><c:v>${esc(q)}</c:v></c:pt>`).join('')}</c:strCache></c:strRef></c:cat>`;
   const value = `<c:val><c:numRef><c:f>'Chart Data'!$B$2:$B$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${values.map((v, i) => (v === null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`)).join('')}</c:numCache></c:numRef></c:val>`;
   let chart = template.chartXml

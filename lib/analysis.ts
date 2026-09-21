@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 export type Lang = 'ar' | 'en';
 export type SurveyType =
   | 'CES'
+  | 'PLO'
   | 'PES'
   | 'EMPLOYEE'
   | 'GRADUATE'
