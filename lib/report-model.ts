@@ -262,6 +262,107 @@ export function buildSurveyReport(
       rows: qs.slice(i, i + 8).map((q) => [q.id, q[lang]]),
       notes,
     });
+  const findingRows = (g: Group) => {
+    const strong = qs
+      .filter((q) => g.questions[q.id]?.positivityBand === 'high')
+      .slice(0, 2)
+      .map((q) => [
+        t('قوة', 'Strength'),
+        q.id + ' ' + q[lang],
+        evidence(g, q),
+        t(
+          'المحافظة على الممارسة الحالية ومتابعة السؤال في الدورة القادمة.',
+          'Maintain the current practice and track the question next cycle.',
+        ),
+      ]);
+    const weak = opportunities(g)
+      .slice(0, 3)
+      .map((q) => {
+        const action =
+          a.type === 'CES' && ACTIONS[q.id]
+            ? ACTIONS[q.id][lang === 'ar' ? 0 : 1]
+            : t(
+                `مراجعة الإجابات المرتبطة بـ«${q.ar}» والتحقق من سبب النتيجة قبل اختيار التدخل.`,
+                `Review responses to “${q.en}” and investigate the finding before selecting an intervention.`,
+              );
+        return [
+          g.questions[q.id]?.positivityBand === 'improve' ||
+          g.questions[q.id]?.meanBand === 'improve'
+            ? t('ضعف', 'Weakness')
+            : t('فرصة تحسين', 'Improvement'),
+          q.id + ' ' + q[lang],
+          evidence(g, q),
+          action,
+        ];
+      });
+    return [...strong, ...weak];
+  };
+  const addDashboardPair = (
+    g: Group,
+    dashboardSection: string,
+    findingsSection: string,
+    courseId?: string,
+  ) => {
+    const topQuestions = qs.slice(0, 3);
+    add({
+      section: dashboardSection,
+      courseId,
+      title:
+        a.type === 'CES'
+          ? t('داشبورد تحليل المقرر', 'Course Analysis Dashboard')
+          : t('داشبورد تحليل الاستبيان', 'Survey Analysis Dashboard'),
+      subtitle: [
+        g.program,
+        g.code || (g.id === 'all' ? titleScope : g.name),
+        g.level ? t('المستوى ', 'Level ') + g.level : '',
+      ]
+        .filter(Boolean)
+        .join(' / '),
+      headers: [t('المؤشر', 'Measure'), t('النتيجة', 'Result')],
+      widths: [3.1, 5.5],
+      rows: [
+        ...summaryRows(g).slice(0, 5),
+        ...topQuestions.map((q) => [
+          q.id + ' ' + q[lang],
+          `${t('المتوسط', 'Mean')}: ${f(g.questions[q.id]?.mean)} / ${a.max}، ${t('الإيجابية', 'Positive')}: ${pct(g.questions[q.id]?.positivity)}، n=${f(g.questions[q.id]?.valid, 0)}`,
+        ]),
+      ],
+      notes,
+    });
+    const rows = findingRows(g);
+    add({
+      section: findingsSection,
+      courseId,
+      title: t(
+        'نقاط القوة والضعف وخطة التحسين',
+        'Strengths, Weaknesses and Improvement Plan',
+      ),
+      subtitle: [g.program, g.code || g.name].filter(Boolean).join(' / '),
+      headers: [
+        t('التصنيف', 'Type'),
+        t('السؤال', 'Question'),
+        t('الدليل', 'Evidence'),
+        t('الإجراء المقترح', 'Proposed action'),
+      ],
+      widths: [1.0, 2.6, 2.1, 2.9],
+      rows,
+      lines: rows.length
+        ? undefined
+        : [
+            t(
+              'لا توجد إجابات مقياسية كافية لعرض نقاط قوة أو فرص تحسين. راجعي بنية الملف قبل اعتماد التقرير.',
+              'There are not enough valid scaled answers to show strengths or improvement opportunities. Review the file structure before approval.',
+            ),
+          ],
+      notes:
+        notes +
+        ' ' +
+        t(
+          'تعرض هذه الشريحة أقوى المؤشرات وأهم فرص التحسين للنطاق نفسه المعروض في الداشبورد السابق.',
+          'This slide shows the strongest indicators and main improvement opportunities for the same scope as the preceding dashboard.',
+        ),
+    });
+  };
   const planPages = (g: Group, aggregate = false) => {
     const candidates = opportunities(g);
     const weak = candidates.filter(
@@ -399,22 +500,7 @@ export function buildSurveyReport(
   if (a.type === 'CES')
     for (const c of courses) {
       const id = courseKey(c);
-      add({
-        section: 'course-summary',
-        courseId: id,
-        title: t('ملخص المقرر', 'Course Summary'),
-        subtitle: `${c.code} / ${c.name}`,
-        headers: [t('البيان', 'Item'), t('القيمة', 'Value')],
-        widths: [3.1, 5.5],
-        rows: [
-          [
-            t('البرنامج / المستوى', 'Program / level'),
-            `${c.program} / ${c.level || t('حسب المصدر', 'As in source')}`,
-          ],
-          ...summaryRows(c),
-        ],
-        notes,
-      });
+      addDashboardPair(c, 'course-dashboard', 'course-findings', id);
       const previous = options.previousActions?.[id];
       if (previous?.plan && previous.source)
         add({
@@ -469,6 +555,7 @@ export function buildSurveyReport(
         });
     }
   else {
+    addDashboardPair(group, 'survey-dashboard', 'survey-findings');
     chartPages(group);
     planPages(group);
   }

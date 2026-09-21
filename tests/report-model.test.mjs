@@ -36,7 +36,8 @@ test('CES sequence is complete for every course and global sections follow all c
   assert.deepEqual(
     pages.filter((p) => p.courseId === id).map((p) => p.section),
     [
-      'course-summary',
+      'course-dashboard',
+      'course-findings',
       'implementation',
       'current-proposed-action-plan',
       'ces-mean',
@@ -86,8 +87,8 @@ test('previous plan only with source evidence and in its requested position', ()
     },
   });
   const sequence = pages.filter((p) => p.courseId === id).map((p) => p.section);
-  assert.equal(sequence[1], 'previous-action-plan');
-  assert.equal(sequence[2], 'implementation');
+  assert.equal(sequence[2], 'previous-action-plan');
+  assert.equal(sequence[3], 'implementation');
 });
 test('every low question gets a proposed action, even when more than three', () => {
   const hs = [...headers, 'Q3', 'Q4', 'Q5'];
@@ -121,7 +122,8 @@ test('selected course exports no unrelated courses, even when its expected rate 
   const c = a.programs[0].courses[0];
   const p = buildSurveyReport(a, 'en', c.id);
   assert.equal(reportManifest(a, p, c.id).courses, 1);
-  assert.equal(p.filter((p) => p.section === 'course-summary').length, 1);
+  assert.equal(p.filter((p) => p.section === 'course-dashboard').length, 1);
+  assert.equal(p.filter((p) => p.section === 'course-findings').length, 1);
 });
 test('every confirmed non-CES survey gets charts and a proposed plan without CES priority', () => {
   const a = analyzeRows([{ Program: 'A', Q1: 9 }], ['Program', 'Q1'], {
