@@ -394,9 +394,13 @@ const page1: ReportPage = {
 
   title: c.code && c.title ? `${c.code} ${c.title}` : c.title || c.code || t('المقرر', 'Course'),
 
-subtitle: c.program
-  ? `${t('المستوى', 'Level')} ${c.level || '—'} • ${c.program}`
-  : `${t('المستوى', 'Level')} ${c.level || '—'}`,
+subtitle: [
+  c.program,
+  c.academicYear,
+  c.semester,
+]
+  .filter(Boolean)
+  .join(' • '),
 
   chart: {
     metric: 'mean',
@@ -454,36 +458,30 @@ subtitle: c.program
     ),
   },
 
-  metrics: [
-    {
-      label: t('Covered Planned Topics', 'Covered Planned Topics'),
-      value:
-        c.coveredTopics === null
-          ? 'N/A'
-          : `${c.coveredTopics.toFixed(1)}%`,
-    },
-    {
-      label: t('CES Result', 'CES Result'),
-      value:
-        c.cesResult === null
-          ? 'N/A'
-          : c.cesResult.toFixed(1),
-    },
-    {
-      label: t('Students Count', 'Students Count'),
-      value:
-        c.started === null
-          ? 'N/A'
-          : `${c.started}`,
-    },
-    {
-      label: t('Completed the course', 'Completed the course'),
-      value:
-        c.completed === null
-          ? 'N/A'
-          : `${c.completed}`,
-    },
-  ],
+ metrics: [
+  {
+    label: 'Covered Planned Topics',
+    value: 'N/A',
+  },
+  {
+    label: 'CES Result',
+    value: 'N/A',
+  },
+  {
+    label: 'Students Count',
+    value:
+      c.started === null
+        ? 'N/A'
+        : `${c.started}`,
+  },
+  {
+    label: 'Completed the course',
+    value:
+      c.completed === null
+        ? 'N/A'
+        : `${c.completed}`,
+  },
+],
 
   notes: t(
     'السلايد الأول مخصص لعرض الرسمين البيانيين ومؤشرات المقرر فقط.',
