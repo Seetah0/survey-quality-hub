@@ -189,7 +189,7 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
    * ------------------------------------------------------------
    */
 
-  const validOutcomes = c.outcomes.filter(
+   /* const validOutcomes = c.outcomes.filter(
     (o) => o.target !== null && o.actual !== null,
   );
 
@@ -199,7 +199,7 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
 
   const weaknesses = validOutcomes
     .filter((o) => outcomeGap(o)! < 0)
-    .sort((a, b) => outcomeGap(a)! - outcomeGap(b)!);
+    .sort((a, b) => outcomeGap(a)! - outcomeGap(b)!); */
 
   /*
    * Limit the visible CLO table so the exporter does not paginate
