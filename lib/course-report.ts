@@ -253,28 +253,7 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
    * ------------------------------------------------------------
    */
 
-  const resultRows = visibleOutcomes.map((o) => {
-    const gap = outcomeGap(o);
-
-    let status = t('غير متاح', 'N/A');
-
-    if (gap !== null) {
-      status =
-        gap >= 0
-          ? t('تحقق المستهدف', 'Target met')
-          : t('أقل من المستهدف', 'Below target');
-    }
-
-    return [
-      o.code,
-      o.plo || '—',
-      f(o.target),
-      f(o.actual),
-      gap === null ? t('غير متاح', 'N/A') : f(gap),
-      status,
-    ];
-  });
-
+ 
   /*
    * Grade distribution is kept as a compact summary on slide 1
    * instead of creating another slide.
