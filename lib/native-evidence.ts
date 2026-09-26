@@ -67,30 +67,36 @@ export async function nativeChart(
   number: number,
 ) {
   const template = templates[data.metric];
+
   const positive = data.metric === 'positivity';
+
   const values = data.values.map((v) =>
     v === null ? null : positive ? v / 100 : v,
   );
+
   const comparisonValues = data.comparisonValues?.map((v) =>
-  v === null ? null : positive ? v / 100 : v,
-);
-const comparisonValue = comparisonValues
-  ? `<c:val><c:numRef><c:f>'Chart Data'!$C$2:$C$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${comparisonValues
-      .map((v, i) =>
-        v === null
-          ? ''
-          : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`,
-      )
-      .join('')}</c:numCache></c:numRef></c:val>`
-  : '';
-const comparisonLabel =
-  data.comparisonLabel ||
-  data.sampleLabel ||
-  (lang === 'ar' ? 'المستهدف' : 'Target');
-  
-  const count = data.categories.length,
-    end = count + 1,
-    format = positive ? '0.0%' : '0.00';
+    v === null ? null : positive ? v / 100 : v,
+  );
+
+  const count = data.categories.length;
+  const end = count + 1;
+  const format = positive ? '0.0%' : '0.00';
+
+  const comparisonLabel =
+    data.comparisonLabel ||
+    data.sampleLabel ||
+    (lang === 'ar' ? 'المستهدف' : 'Target');
+
+  const comparisonValue = comparisonValues
+    ? `<c:val><c:numRef><c:f>'Chart Data'!$C$2:$C$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${comparisonValues
+        .map((v, i) =>
+          v === null
+            ? ''
+            : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`,
+        )
+        .join('')}</c:numCache></c:numRef></c:val>`
+    : '';
+
   const label =
     data.label ||
     (positive
@@ -100,8 +106,21 @@ const comparisonLabel =
       : lang === 'ar'
         ? 'المتوسط'
         : 'Mean');
-  const category = `<c:cat><c:strRef><c:f>'Chart Data'!$A$2:$A$${end}</c:f><c:strCache><c:ptCount val="${count}"/>${data.categories.map((q, i) => `<c:pt idx="${i}"><c:v>${esc(q)}</c:v></c:pt>`).join('')}</c:strCache></c:strRef></c:cat>`;
-  const value = `<c:val><c:numRef><c:f>'Chart Data'!$B$2:$B$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${values.map((v, i) => (v === null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`)).join('')}</c:numCache></c:numRef></c:val>`;
+
+  const category = `<c:cat><c:strRef><c:f>'Chart Data'!$A$2:$A$${end}</c:f><c:strCache><c:ptCount val="${count}"/>${data.categories
+    .map(
+      (q, i) =>
+        `<c:pt idx="${i}"><c:v>${esc(q)}</c:v></c:pt>`,
+    )
+    .join('')}</c:strCache></c:strRef></c:cat>`;
+
+  const value = `<c:val><c:numRef><c:f>'Chart Data'!$B$2:$B$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${values
+    .map((v, i) =>
+      v === null
+        ? ''
+        : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`,
+    )
+    .join('')}</c:numCache></c:numRef></c:val>`;
   let chart = template.chartXml
     .replace('<c:cat/>', category)
     .replace('<c:val/>', value)
