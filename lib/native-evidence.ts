@@ -71,6 +71,23 @@ export async function nativeChart(
   const values = data.values.map((v) =>
     v === null ? null : positive ? v / 100 : v,
   );
+  const comparisonValues = data.comparisonValues?.map((v) =>
+  v === null ? null : positive ? v / 100 : v,
+);
+const comparisonValue = comparisonValues
+  ? `<c:val><c:numRef><c:f>'Chart Data'!$C$2:$C$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${comparisonValues
+      .map((v, i) =>
+        v === null
+          ? ''
+          : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`,
+      )
+      .join('')}</c:numCache></c:numRef></c:val>`
+  : '';
+const comparisonLabel =
+  data.comparisonLabel ||
+  data.sampleLabel ||
+  (lang === 'ar' ? 'المستهدف' : 'Target');
+  
   const count = data.categories.length,
     end = count + 1,
     format = positive ? '0.0%' : '0.00';
@@ -93,6 +110,37 @@ export async function nativeChart(
       /<c:lang val="[^"]+"\/>/,
       `<c:lang val="${lang === 'ar' ? 'ar-SA' : 'en-US'}"/>`,
     );
+  if (comparisonValues) {
+  const secondSeries = `
+    <c:ser>
+      <c:idx val="1"/>
+      <c:order val="1"/>
+
+      <c:tx>
+        <c:v>${esc(comparisonLabel)}</c:v>
+      </c:tx>
+
+      <c:spPr>
+        <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <a:srgbClr val="AE871B"/>
+        </a:solidFill>
+
+        <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+          <a:noFill/>
+        </a:ln>
+      </c:spPr>
+
+      ${category}
+
+      ${comparisonValue}
+    </c:ser>
+  `;
+
+  chart = chart.replace(
+    '<c:dLbls>',
+    `${secondSeries}<c:dLbls>`,
+  );
+}
   const q15 = data.categories.indexOf('Q15');
   chart = chart.replace(/<c:dPt>[\s\S]*?<\/c:dPt>/, (match) =>
     q15 < 0 ? '' : match.replace('<c:idx val="14"/>', `<c:idx val="${q15}"/>`),
