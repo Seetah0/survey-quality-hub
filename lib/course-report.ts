@@ -424,30 +424,30 @@ chart: {
     'المستهدف %',
     'Target %',
   ),
-values: c.outcomes.map(
-  (o) => o.actual,
-),
+
+  note: t(
+    'مقارنة نتائج نواتج التعلم الفعلية بالمستهدفات المعتمدة لكل CLO.',
+    'Comparison of actual learning-outcome achievement against the approved target for each CLO.',
+  ),
+
+  categories: c.outcomes.map(
+    (o) => `CLO ${o.code}`,
+  ),
+
+  values: c.outcomes.map(
+    (o) => o.actual,
+  ),
+
   comparisonValues: c.outcomes.map(
-  (o) => o.target,
-),
+    (o) => o.target,
+  ),
+
   valid: c.outcomes.map(
-  (o) => o.target ?? 0,
-),
+    (o) => o.target ?? 0,
+  ),
 
-max: 100,
-    note: t(
-      'مقارنة نتائج نواتج التعلم الفعلية بالمستهدفات المعتمدة لكل CLO.',
-      'Comparison of actual learning-outcome achievement against the approved target for each CLO.',
-    ),
-
-    categories: c.outcomes.map(
-      (o) => `CLO ${o.code}`,
-    ),
-
-    values: c.outcomes.map(
-      (o) => o.actual,
-    ),
-
+  max: 100,
+},
     /*
      * في البنية الحالية للمشروع valid تستخدم كسلسلة مرجعية إضافية.
      */
