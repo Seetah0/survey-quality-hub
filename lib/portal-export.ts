@@ -19,7 +19,13 @@ export function buildPortalPages(items: Dataset[], lang: Lang): ReportPage[] {
     {
       title:
         lang === 'ar' ? 'تقرير الجودة الشامل' : 'Comprehensive Quality Report',
-      subtitle: [...new Set(items.map((d) => d.year))].join(' • '),
+subtitle: [
+  ...new Set(
+    items.map((d) =>
+      d.course?.academicYear || d.year,
+    ),
+  ),
+].join(' • '),
       cover: true,
     },
     ...pages,
