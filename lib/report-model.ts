@@ -34,6 +34,7 @@ export type ReportPage = {
 
   headers?: string[];
   widths?: number[];
+  rowHeights?: number[];
   rows?: string[][];
 
   lines?: string[];
