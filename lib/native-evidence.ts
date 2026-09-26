@@ -160,10 +160,60 @@ const comparisonLabel =
   for (const [p, v] of Object.entries(template.workbookParts)) book.file(p, v);
   const cell = (address: string, text: string) =>
     `<c r="${address}" t="inlineStr"><is><t>${esc(text)}</t></is></c>`;
-  book.file(
-    'xl/worksheets/sheet1.xml',
-    `<worksheet xmlns="${S}"><dimension ref="A1:C${end}"/><cols><col min="1" max="1" width="16" customWidth="1"/><col min="2" max="3" width="20" customWidth="1"/></cols><sheetData><row r="1">${cell('A1', 'Question')}${cell('B1', label)}${cell('C1', 'Valid answers')}</row>${data.categories.map((q, i) => `<row r="${i + 2}">${cell('A' + (i + 2), q)}${values[i] === null ? `<c r="B${i + 2}"/>` : `<c r="B${i + 2}" s="1"><v>${values[i]}</v></c>`}<c r="C${i + 2}"><v>${data.valid[i]}</v></c></row>`).join('')}</sheetData></worksheet>`,
-  );
+book.file(
+  'xl/worksheets/sheet1.xml',
+  `<worksheet xmlns="${S}">
+    <dimension ref="A1:D${end}"/>
+
+    <cols>
+      <col min="1" max="1" width="16" customWidth="1"/>
+      <col min="2" max="4" width="20" customWidth="1"/>
+    </cols>
+
+    <sheetData>
+
+      <row r="1">
+        ${cell('A1', 'Question')}
+        ${cell('B1', label)}
+        ${cell('C1', comparisonValues ? comparisonLabel : 'Valid answers')}
+        ${comparisonValues ? cell('D1', 'Valid answers') : ''}
+      </row>
+
+      ${data.categories
+        .map(
+          (q, i) => `
+        <row r="${i + 2}">
+          ${cell('A' + (i + 2), q)}
+
+          ${
+            values[i] === null
+              ? `<c r="B${i + 2}"/>`
+              : `<c r="B${i + 2}" s="1"><v>${values[i]}</v></c>`
+          }
+
+          ${
+            comparisonValues
+              ? comparisonValues[i] === null
+                ? `<c r="C${i + 2}"/>`
+                : `<c r="C${i + 2}" s="1"><v>${comparisonValues[i]}</v></c>`
+              : `<c r="C${i + 2}"><v>${data.valid[i]}</v></c>`
+          }
+
+          ${
+            comparisonValues
+              ? `<c r="D${i + 2}"><v>${data.valid[i]}</v></c>`
+              : ''
+          }
+
+        </row>
+      `,
+        )
+        .join('')}
+
+    </sheetData>
+
+  </worksheet>`,
+);
   book.file(
     'xl/styles.xml',
     `<styleSheet xmlns="${S}"><numFmts count="1"><numFmt numFmtId="164" formatCode="${format}"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Arial"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`,
