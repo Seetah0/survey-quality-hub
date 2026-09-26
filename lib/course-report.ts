@@ -300,38 +300,69 @@ const weaknessSummary =
 
   const priorityWeaknesses = weaknesses.slice(0, 4);
 
-  const improvementRows =
-    priorityWeaknesses.length > 0
-      ? priorityWeaknesses.map((o) => [
-          `CLO ${o.code}`,
-          `${f(o.actual)}% / ${f(o.target)}%\n${f(outcomeGap(o))} pp`,
-          actionForOutcome(o),
-          t('أعضاء المقرر', 'Course Members'),
+const improvementRows =
+  priorityWeaknesses.length > 0
+    ? priorityWeaknesses.map((o) => [
+        t(
+          `تحسين تحقيق CLO ${o.code} الذي بلغ ${f(o.actual)}% مقابل مستهدف ${f(o.target)}%.`,
+          `Improve achievement of CLO ${o.code}, which reached ${f(o.actual)}% against a target of ${f(o.target)}%.`,
+        ),
+
+        actionForOutcome(o),
+
+        t(
+          'أعضاء المقرر',
+          'Course Members',
+        ),
+
+        t(
+          'بداية الدورة القادمة',
+          'Beginning of next Cycle',
+        ),
+
+        t(
+          'نهاية الدورة القادمة',
+          'End of next Cycle',
+        ),
+
+        t(
+          'يحدد عند الاعتماد',
+          'To be determined upon approval',
+        ),
+      ])
+    : [
+        [
           t(
-            'الدورة القادمة',
-            'Next cycle',
+            'المحافظة على مستوى تحقيق نواتج التعلم.',
+            'Maintain the current level of learning-outcome achievement.',
           ),
-          `${t('تحقيق', 'Reach')} ≥ ${f(o.target)}%`,
-        ])
-      : [
-          [
-            t('المحافظة على الأداء', 'Maintain performance'),
-            t(
-              'جميع نواتج التعلم ذات البيانات المكتملة حققت المستهدف.',
-              'All learning outcomes with complete data met their targets.',
-            ),
-            t(
-              'المحافظة على الممارسات الحالية وإعادة القياس في الدورة القادمة.',
-              'Maintain current practices and reassess in the next cycle.',
-            ),
-            t('أعضاء المقرر', 'Course Members'),
-            t('الدورة القادمة', 'Next cycle'),
-            t(
-              'استمرار تحقيق المستهدفات.',
-              'Maintain target achievement.',
-            ),
-          ],
-        ];
+
+          t(
+            'الاستمرار في الممارسات الحالية ومتابعة النتائج في الدورة القادمة.',
+            'Continue current practices and monitor results in the next cycle.',
+          ),
+
+          t(
+            'أعضاء المقرر',
+            'Course Members',
+          ),
+
+          t(
+            'بداية الدورة القادمة',
+            'Beginning of next Cycle',
+          ),
+
+          t(
+            'نهاية الدورة القادمة',
+            'End of next Cycle',
+          ),
+
+          t(
+            'يحدد عند الاعتماد',
+            'To be determined upon approval',
+          ),
+        ],
+      ];
 
   /*
    * ------------------------------------------------------------
@@ -489,29 +520,43 @@ subtitle: [
   ),
 };
 
-  const page2: ReportPage = {
+ const page2: ReportPage = {
   section: 'course-improvement-plan',
   courseId: c.code,
 
- title: 'ACTION PLAN',
-    
-subtitle: c.code && c.title ? `${c.code} ${c.title}` : [c.code, c.title].filter(Boolean).join(' • '),
+  title: 'ACTION PLAN',
+
+  subtitle:
+    c.code && c.title
+      ? `${c.code} ${c.title}`
+      : [c.code, c.title].filter(Boolean).join(' • '),
+
   headers: [
-    t('الملاحظة', 'Finding'),
-    t('الدليل', 'Evidence'),
-    t('الإجراء المقترح', 'Proposed Action'),
-    t('المسؤول المقترح', 'Proposed Responsible'),
-    t('المدة المقترحة', 'Proposed Timeline'),
-    t('مؤشر النجاح', 'Success Measure'),
+    t('التوصيات', 'Recommendations'),
+    t('الإجراءات', 'Actions'),
+    t(
+      'مسؤولية التنفيذ',
+      'Responsibility For Implementation',
+    ),
+    t('البداية', 'Start'),
+    t('النهاية', 'End'),
+    t('الدعم المطلوب', 'Needed Support'),
   ],
 
-  widths: [1.0, 1.3, 2.6, 1.1, 1.3, 1.3],
+  widths: [
+    2.05,
+    2.35,
+    1.45,
+    0.9,
+    0.9,
+    0.95,
+  ],
 
   rows: improvementRows,
 
   notes: t(
-    'خطة التحسين مبنية على قواعد ثابتة دون استخدام AI. الأولوية تعطى لنواتج التعلم ذات أكبر فجوة سالبة عن المستهدف. المسؤول والمدة مقترحان وقابلان للتعديل عند الاعتماد الرسمي.',
-    'The improvement plan is generated using fixed rules without AI. Priority is given to learning outcomes with the largest negative target gaps. Responsibility and timeline are proposed and may be adjusted during formal approval.',
+    'خطة العمل مولدة بقواعد ثابتة دون استخدام AI استنادًا إلى نواتج التعلم الأقل من المستهدف. المسؤول والتوقيت والدعم المقترح تخضع للاعتماد الرسمي.',
+    'The action plan is generated using fixed rules without AI based on learning outcomes below target. Responsibility, timing, and required support remain subject to formal approval.',
   ),
 };
   /*
