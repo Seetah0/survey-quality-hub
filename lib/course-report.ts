@@ -448,15 +448,7 @@ chart: {
 
   max: 100,
 },
-    /*
-     * في البنية الحالية للمشروع valid تستخدم كسلسلة مرجعية إضافية.
-     */
-    valid: c.outcomes.map(
-      (o) => o.target ?? 0,
-    ),
-
-    max: 100,
-  },
+  
 
   lines: [
     `${t('المسجلون', 'Started')}: ${f(c.started, 0)}   |   ${t(
