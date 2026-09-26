@@ -481,40 +481,94 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
    * Strengths, Weaknesses & Improvement Plan
    * ============================================================
    */
+const page1: ReportPage = {
+  section: 'course-results-analysis',
+  courseId: c.code,
 
-  const page2: ReportPage = {
-    section: 'course-improvement-plan',
-    courseId: c.code,
+  title: t(
+    'نتائج المقرر',
+    'Course Results',
+  ),
 
-    title: t(
-      'نقاط القوة والضعف وخطة التحسين',
-      'Strengths, Weaknesses & Improvement Plan',
+  subtitle: [
+    c.code,
+    c.title,
+    c.program,
+    c.academicYear,
+    c.semester,
+  ]
+    .filter(Boolean)
+    .join(' • '),
+
+  /*
+   * الرسم الرئيسي:
+   * Actual CLO achievement
+   * مع Target محفوظ داخل valid لاستخدامه كمرجع في التصدير.
+   */
+  chart: {
+    metric: 'mean',
+
+    label: t(
+      'النتيجة الفعلية %',
+      'Actual %',
     ),
 
-    subtitle: [c.code, c.title].filter(Boolean).join(' • '),
+    sampleLabel: t(
+      'المستهدف %',
+      'Target %',
+    ),
 
-    headers: [
-      t('الملاحظة', 'Finding'),
-      t('الدليل', 'Evidence'),
-      t('الإجراء المقترح', 'Proposed Action'),
-      t('المسؤول', 'Responsible'),
-      t('المدة', 'Timeline'),
-      t('مؤشر النجاح', 'Success Measure'),
-    ],
+    note: t(
+      'مقارنة نتائج نواتج التعلم الفعلية بالمستهدفات المعتمدة لكل CLO.',
+      'Comparison of actual learning-outcome achievement against the approved target for each CLO.',
+    ),
+
+    categories: c.outcomes.map(
+      (o) => `CLO ${o.code}`,
+    ),
+
+    values: c.outcomes.map(
+      (o) => o.actual,
+    ),
 
     /*
-     * Total width = 8.6 inches
+     * في البنية الحالية للمشروع valid تستخدم كسلسلة مرجعية إضافية.
      */
-    widths: [1.0, 1.3, 2.6, 1.1, 1.3, 1.3],
-
-    rows: improvementRows,
-
-    notes: t(
-      'خطة التحسين مبنية على قواعد ثابتة دون استخدام AI. الأولوية تعطى لنواتج التعلم ذات أكبر فجوة سالبة عن المستهدف. المسؤول والمدة قابلان للتعديل عند الاعتماد الرسمي.',
-      'The improvement plan is generated using fixed rules without AI. Priority is given to learning outcomes with the largest negative target gaps. Responsibility and timeline may be adjusted during formal approval.',
+    valid: c.outcomes.map(
+      (o) => o.target ?? 0,
     ),
-  };
 
+    max: 100,
+  },
+
+  lines: [
+    `${t('المسجلون', 'Started')}: ${f(c.started, 0)}   |   ${t(
+      'المكتملون',
+      'Completed',
+    )}: ${f(c.completed, 0)}`,
+
+    gradeSummary
+      ? `${t('توزيع الدرجات', 'Grade Distribution')}: ${gradeSummary}`
+      : t(
+          'توزيع الدرجات غير متاح في المصدر.',
+          'Grade distribution is not available in the source.',
+        ),
+
+    `${t('نقاط القوة', 'Strengths')}: ${strengthSummary}`,
+
+    `${t('نقاط الضعف', 'Weaknesses')}: ${weaknessSummary}`,
+
+    ...dataWarnings.map(
+      (warning) =>
+        `${t('تنبيه بيانات', 'Data Warning')}: ${warning}`,
+    ),
+  ],
+
+  notes: t(
+    'يتم تحديد نقاط القوة والضعف بمقارنة Actual مع Target لكل CLO. القيم المفقودة لا تُعامل كصفر ولا تُستخدم لإثبات وجود ضعف.',
+    'Strengths and weaknesses are determined by comparing Actual with Target for each CLO. Missing values are neither treated as zero nor used to infer a weakness.',
+  ),
+};
   /*
    * IMPORTANT:
    * Exactly TWO pages are returned for each course.
