@@ -266,7 +266,6 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
   const strengthSummary =
     strengths.length > 0
       ? strengths
-          .slice(0, 2)
           .map(
             (o) =>
               `CLO ${o.code}: ${f(o.actual)}% ≥ ${f(o.target)}%`,
@@ -277,19 +276,18 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
           'No learning outcomes with complete data exceeded the target.',
         );
 
-  const weaknessSummary =
-    weaknesses.length > 0
-      ? weaknesses
-          .slice(0, 2)
-          .map(
-            (o) =>
-              `CLO ${o.code}: ${f(o.actual)}% < ${f(o.target)}%`,
-          )
-          .join(' | ')
-      : t(
-          'لا توجد فجوات سالبة محسوبة.',
-          'No calculated learning-outcome gaps are below target.',
-        );
+const weaknessSummary =
+  weaknesses.length > 0
+    ? weaknesses
+        .map(
+          (o) =>
+            `CLO ${o.code}: ${f(o.actual)}% < ${f(o.target)}%`,
+        )
+        .join(' | ')
+    : t(
+        'لا توجد فجوات سالبة محسوبة.',
+        'No calculated learning-outcome gaps are below target.',
+      );
 
   /*
    * ------------------------------------------------------------
@@ -414,19 +412,29 @@ const page1: ReportPage = {
    * Actual CLO achievement
    * مع Target محفوظ داخل valid لاستخدامه كمرجع في التصدير.
    */
-  chart: {
-    metric: 'mean',
+chart: {
+  metric: 'mean',
 
-    label: t(
-      'النتيجة الفعلية %',
-      'Actual %',
-    ),
+  label: t(
+    'النتيجة الفعلية %',
+    'Actual %',
+  ),
 
-    sampleLabel: t(
-      'المستهدف %',
-      'Target %',
-    ),
+  comparisonLabel: t(
+    'المستهدف %',
+    'Target %',
+  ),
+values: c.outcomes.map(
+  (o) => o.actual,
+),
+  comparisonValues: c.outcomes.map(
+  (o) => o.target,
+),
+  valid: c.outcomes.map(
+  (o) => o.target ?? 0,
+),
 
+max: 100,
     note: t(
       'مقارنة نتائج نواتج التعلم الفعلية بالمستهدفات المعتمدة لكل CLO.',
       'Comparison of actual learning-outcome achievement against the approved target for each CLO.',
