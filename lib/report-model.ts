@@ -4,10 +4,18 @@ export type ReportChart = {
   label?: string;
   note?: string;
   sampleLabel?: string;
+
   metric: 'mean' | 'positivity';
+
   categories: string[];
+
   values: (number | null)[];
+
+  comparisonValues?: (number | null)[];
+  comparisonLabel?: string;
+
   valid: number[];
+
   max: number;
 };
 export type ReportPage = {
