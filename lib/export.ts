@@ -466,7 +466,169 @@ export async function makePptx(pages: Page[], lang: Lang) {
           '57667B',
         );
       let y = 2.27;
-      if (page.chart) {
+      if (
+  page.section === 'course-dashboard' &&
+  page.chart &&
+  page.secondaryChart
+) {
+          // ------------------------------------------------------------
+  // Course dashboard layout
+  // Slide 1:
+  // 1. Learning Outcomes Achievement
+  // 2. Grades Distribution
+  // 3. Course KPI cards
+  // ------------------------------------------------------------
+
+  body += textShape(
+    shape++,
+    'LEARNING OUTCOMES ACHIEVEMENT',
+    1.0,
+    2.05,
+    8.4,
+    0.28,
+    11,
+    'en',
+    '32395A',
+    true,
+  );
+
+  chartCount++;
+  const learningChartRelId = `rIdChart${chartCount}`;
+
+  const learningChart = await nativeChart(
+    page.chart,
+    lang,
+    chartCount,
+    {
+      x: 1.0,
+      y: 2.33,
+      w: 8.4,
+      h: 1.65,
+      relId: learningChartRelId,
+    },
+  );
+
+  zip.file(
+    `ppt/charts/chart${chartCount}.xml`,
+    learningChart.chart,
+  );
+
+  zip.file(
+    `ppt/charts/_rels/chart${chartCount}.xml.rels`,
+    learningChart.relationship,
+  );
+
+  zip.file(
+    `ppt/embeddings/chart${chartCount}.xlsx`,
+    learningChart.workbook,
+  );
+
+  paths.push(
+    `ppt/charts/chart${chartCount}.xml`,
+  );
+
+  extraRels += rel(
+    learningChartRelId,
+    'chart',
+    `../charts/chart${chartCount}.xml`,
+  );
+
+  body += learningChart.frame;
+
+  body += textShape(
+    shape++,
+    'GRADES DISTRIBUTION',
+    1.0,
+    4.12,
+    8.4,
+    0.28,
+    11,
+    'en',
+    '32395A',
+    true,
+  );
+
+  chartCount++;
+  const gradesChartRelId = `rIdChart${chartCount}`;
+
+  const gradesChart = await nativeChart(
+    page.secondaryChart,
+    lang,
+    chartCount,
+    {
+      x: 1.0,
+      y: 4.40,
+      w: 8.4,
+      h: 1.35,
+      relId: gradesChartRelId,
+    },
+  );
+
+  zip.file(
+    `ppt/charts/chart${chartCount}.xml`,
+    gradesChart.chart,
+  );
+
+  zip.file(
+    `ppt/charts/_rels/chart${chartCount}.xml.rels`,
+    gradesChart.relationship,
+  );
+
+  zip.file(
+    `ppt/embeddings/chart${chartCount}.xlsx`,
+    gradesChart.workbook,
+  );
+
+  paths.push(
+    `ppt/charts/chart${chartCount}.xml`,
+  );
+
+  extraRels += rel(
+    gradesChartRelId,
+    'chart',
+    `../charts/chart${chartCount}.xml`,
+  );
+
+  body += gradesChart.frame;
+
+  if (page.metrics?.length) {
+    const cardWidth = 2.0;
+    const gap = 0.15;
+    const startX = 1.0;
+
+    page.metrics.slice(0, 4).forEach((metric, index) => {
+      const x = startX + index * (cardWidth + gap);
+
+      body += textShape(
+        shape++,
+        metric.label,
+        x,
+        5.95,
+        cardWidth,
+        0.22,
+        8,
+        'en',
+        '57667B',
+        true,
+      );
+
+      body += textShape(
+        shape++,
+        metric.value,
+        x,
+        6.20,
+        cardWidth,
+        0.42,
+        17,
+        'en',
+        '32395A',
+        true,
+      );
+    });
+  }
+
+  y = 6.75;
+      } else if (page.chart) {
         chartCount++;
         const chart = await nativeChart(page.chart, lang, chartCount);
         zip.file(`ppt/charts/chart${chartCount}.xml`, chart.chart);
