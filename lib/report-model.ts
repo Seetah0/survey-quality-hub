@@ -1,5 +1,10 @@
 import type { Analysis, Group, Lang, Metric, Question } from './analysis';
 
+export type ReportMetricCard = {
+  label: string;
+  value: string;
+  note?: string;
+};
 export type ReportChart = {
   label?: string;
   note?: string;
@@ -19,19 +24,28 @@ export type ReportChart = {
   max: number;
 };
 export type ReportPage = {
-  title: string;
-  subtitle?: string;
-  lines?: string[];
-  headers?: string[];
-  rows?: string[][];
-  widths?: number[];
-  rowHeights?: number[];
-  cover?: boolean;
-  chart?: ReportChart;
   section?: string;
   courseId?: string;
+
+  title: string;
+  subtitle?: string;
+
+  cover?: boolean;
+
+  headers?: string[];
+  widths?: number[];
+  rows?: string[][];
+
+  lines?: string[];
   notes?: string;
+
+  chart?: ReportChart;
+
+  secondaryChart?: ReportChart;
+
+  metrics?: ReportMetricCard[];
 };
+
 export type PreviousAction = {
   plan: string;
   implementation?: string;
