@@ -394,9 +394,9 @@ const page1: ReportPage = {
 
   title: c.code && c.title ? `${c.code} ${c.title}` : c.title || c.code || t('المقرر', 'Course'),
 
-  subtitle: c.program
-    ? `${t('المستوى', 'Level')} ${c.level || '—'} • ${c.program}`
-    : `${t('المستوى', 'Level')} ${c.level || '—'}`,
+subtitle: c.program
+  ? `${t('المستوى', 'Level')} ${c.level || '—'} • ${c.program}`
+  : `${t('المستوى', 'Level')} ${c.level || '—'}`,
 
   chart: {
     metric: 'mean',
