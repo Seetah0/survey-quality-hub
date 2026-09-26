@@ -389,93 +389,105 @@ const weaknessSummary =
    */
 
 const page1: ReportPage = {
-  section: 'course-results-analysis',
+  section: 'course-dashboard',
   courseId: c.code,
 
-  title: t(
-    'نتائج المقرر',
-    'Course Results',
-  ),
+  title: c.code && c.title ? `${c.code} ${c.title}` : c.title || c.code || t('المقرر', 'Course'),
 
-  subtitle: [
-    c.code,
-    c.title,
-    c.program,
-    c.academicYear,
-    c.semester,
-  ]
-    .filter(Boolean)
-    .join(' • '),
+  subtitle: c.program
+    ? `${t('المستوى', 'Level')} ${c.level || '—'} • ${c.program}`
+    : `${t('المستوى', 'Level')} ${c.level || '—'}`,
 
-  /*
-   * الرسم الرئيسي:
-   * Actual CLO achievement
-   * مع Target محفوظ داخل valid لاستخدامه كمرجع في التصدير.
-   */
-chart: {
-  metric: 'mean',
+  chart: {
+    metric: 'mean',
 
-  label: t(
-    'النتيجة الفعلية %',
-    'Actual %',
-  ),
-
-  comparisonLabel: t(
-    'المستهدف %',
-    'Target %',
-  ),
-
-  note: t(
-    'مقارنة نتائج نواتج التعلم الفعلية بالمستهدفات المعتمدة لكل CLO.',
-    'Comparison of actual learning-outcome achievement against the approved target for each CLO.',
-  ),
-
-  categories: c.outcomes.map(
-    (o) => `CLO ${o.code}`,
-  ),
-
-  values: c.outcomes.map(
-    (o) => o.actual,
-  ),
-
-  comparisonValues: c.outcomes.map(
-    (o) => o.target,
-  ),
-
-  valid: c.outcomes.map(
-    (o) => o.target ?? 0,
-  ),
-
-  max: 100,
-},
-  
-
-  lines: [
-    `${t('المسجلون', 'Started')}: ${f(c.started, 0)}   |   ${t(
-      'المكتملون',
-      'Completed',
-    )}: ${f(c.completed, 0)}`,
-
-    gradeSummary
-      ? `${t('توزيع الدرجات', 'Grade Distribution')}: ${gradeSummary}`
-      : t(
-          'توزيع الدرجات غير متاح في المصدر.',
-          'Grade distribution is not available in the source.',
-        ),
-
-    `${t('نقاط القوة', 'Strengths')}: ${strengthSummary}`,
-
-    `${t('نقاط الضعف', 'Weaknesses')}: ${weaknessSummary}`,
-
-    ...dataWarnings.map(
-      (warning) =>
-        `${t('تنبيه بيانات', 'Data Warning')}: ${warning}`,
+    label: t(
+      'Target',
+      'Target',
     ),
+
+    comparisonLabel: t(
+      'Actual',
+      'Actual',
+    ),
+
+    note: t(
+      'LEARNING OUTCOMES ACHIEVEMENT',
+      'LEARNING OUTCOMES ACHIEVEMENT',
+    ),
+
+    categories: c.outcomes.map((o) => o.code),
+
+    values: c.outcomes.map((o) => o.target),
+
+    comparisonValues: c.outcomes.map((o) => o.actual),
+
+    valid: c.outcomes.map((o) => o.target ?? 0),
+
+    max: 100,
+  },
+
+  secondaryChart: {
+    metric: 'mean',
+
+    label: t(
+      "Student's Count",
+      "Student's Count",
+    ),
+
+    note: t(
+      'GRADES DISTRIBUTION',
+      'GRADES DISTRIBUTION',
+    ),
+
+    categories: c.grades.map((g) => g.grade),
+
+    values: c.grades.map((g) => g.count),
+
+    valid: c.grades.map((g) => g.count ?? 0),
+
+    max: Math.max(
+      100,
+      ...c.grades
+        .map((g) => g.count ?? 0)
+        .filter((n) => Number.isFinite(n)),
+    ),
+  },
+
+  metrics: [
+    {
+      label: t('Covered Planned Topics', 'Covered Planned Topics'),
+      value:
+        c.coveredTopics === null
+          ? 'N/A'
+          : `${c.coveredTopics.toFixed(1)}%`,
+    },
+    {
+      label: t('CES Result', 'CES Result'),
+      value:
+        c.cesResult === null
+          ? 'N/A'
+          : c.cesResult.toFixed(1),
+    },
+    {
+      label: t('Students Count', 'Students Count'),
+      value:
+        c.started === null
+          ? 'N/A'
+          : `${c.started}`,
+    },
+    {
+      label: t('Completed the course', 'Completed the course'),
+      value:
+        c.completed === null
+          ? 'N/A'
+          : `${c.completed}`,
+    },
   ],
 
   notes: t(
-    'يتم تحديد نقاط القوة والضعف بمقارنة Actual مع Target لكل CLO. القيم المفقودة لا تُعامل كصفر ولا تُستخدم لإثبات وجود ضعف.',
-    'Strengths and weaknesses are determined by comparing Actual with Target for each CLO. Missing values are neither treated as zero nor used to infer a weakness.',
+    'السلايد الأول مخصص لعرض الرسمين البيانيين ومؤشرات المقرر فقط.',
+    'This slide is dedicated to the two charts and course indicators only.',
   ),
 };
 
@@ -483,13 +495,9 @@ chart: {
   section: 'course-improvement-plan',
   courseId: c.code,
 
-  title: t(
-    'التحليل وخطة التحسين',
-    'Analysis & Improvement Plan',
-  ),
-
-  subtitle: [c.code, c.title].filter(Boolean).join(' • '),
-
+ title: 'ACTION PLAN',
+    
+subtitle: c.code && c.title ? `${c.code} ${c.title}` : [c.code, c.title].filter(Boolean).join(' • '),
   headers: [
     t('الملاحظة', 'Finding'),
     t('الدليل', 'Evidence'),
