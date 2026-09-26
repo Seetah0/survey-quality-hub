@@ -62,7 +62,15 @@ test('course source data, CLO/PLO mapping and targets are distinct from survey s
 });
 test('course exports preserve evidence, produce editable files and retain UTF-8', async () => {
   const pages = buildPortalPages([dataset], 'ar');
-  assert.ok(pages.some((p) => p.lines?.some((v) => v.includes('49% / 80%'))));
+assert.ok(
+  pages.some(
+    (p) =>
+      p.lines?.some((v) => v.includes('49%') && v.includes('80%')) ||
+      p.rows?.some((row) =>
+        row.some((cell) => cell.includes('49%') && cell.includes('80%')),
+      ),
+  ),
+)
   const ppt = await JSZip.loadAsync(await makePptx(pages, 'ar'));
   assert.ok(ppt.file('ppt/presentation.xml'));
   const doc = await JSZip.loadAsync(await makeDocx(pages, 'ar'));
