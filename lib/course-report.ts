@@ -411,76 +411,6 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
    * ============================================================
    */
 
-  const page1: ReportPage = {
-    section: 'course-results-analysis',
-    courseId: c.code,
-
-    title: t(
-      'نتائج وتحليل المقرر',
-      'Course Results & Analysis',
-    ),
-
-    subtitle: [
-      c.code,
-      c.title,
-      c.program,
-      c.academicYear,
-      c.semester,
-    ]
-      .filter(Boolean)
-      .join(' • '),
-
-    headers: [
-      'CLO',
-      'PLO',
-      t('المستهدف %', 'Target %'),
-      t('الفعلي %', 'Actual %'),
-      t('الفجوة', 'Gap'),
-      t('الحالة', 'Status'),
-    ],
-
-    /*
-     * Total width = 8.6 inches
-     */
-    widths: [0.75, 0.75, 1.15, 1.15, 1.0, 3.8],
-
-    rows: resultRows,
-
-    lines: [
-      `${t('الطلاب', 'Students')}: ${t('المسجلون', 'Started')} ${f(
-        c.started,
-        0,
-      )} | ${t('المكتملون', 'Completed')} ${f(c.completed, 0)}`,
-
-      gradeSummary
-        ? `${t('توزيع الدرجات', 'Grade Distribution')}: ${gradeSummary}`
-        : t(
-            'توزيع الدرجات غير متاح في المصدر.',
-            'Grade distribution is not available in the source.',
-          ),
-
-      `${t('نقاط القوة', 'Strengths')}: ${strengthSummary}`,
-
-      `${t('نقاط الضعف', 'Weaknesses')}: ${weaknessSummary}`,
-
-      ...dataWarnings.map(
-        (warning) =>
-          `${t('تنبيه بيانات', 'Data Warning')}: ${warning}`,
-      ),
-    ],
-
-    notes: t(
-      'يتم تحديد نقاط القوة والضعف آليًا بمقارنة Actual مع Target لكل CLO. القيم المفقودة لا تُعامل كصفر ولا تُستخدم لإثبات وجود ضعف.',
-      'Strengths and weaknesses are determined automatically by comparing Actual with Target for each CLO. Missing values are neither treated as zero nor used to infer a weakness.',
-    ),
-  };
-
-  /*
-   * ============================================================
-   * SLIDE 2
-   * Strengths, Weaknesses & Improvement Plan
-   * ============================================================
-   */
 const page1: ReportPage = {
   section: 'course-results-analysis',
   courseId: c.code,
@@ -567,6 +497,36 @@ const page1: ReportPage = {
   notes: t(
     'يتم تحديد نقاط القوة والضعف بمقارنة Actual مع Target لكل CLO. القيم المفقودة لا تُعامل كصفر ولا تُستخدم لإثبات وجود ضعف.',
     'Strengths and weaknesses are determined by comparing Actual with Target for each CLO. Missing values are neither treated as zero nor used to infer a weakness.',
+  ),
+};
+
+  const page2: ReportPage = {
+  section: 'course-improvement-plan',
+  courseId: c.code,
+
+  title: t(
+    'التحليل وخطة التحسين',
+    'Analysis & Improvement Plan',
+  ),
+
+  subtitle: [c.code, c.title].filter(Boolean).join(' • '),
+
+  headers: [
+    t('الملاحظة', 'Finding'),
+    t('الدليل', 'Evidence'),
+    t('الإجراء المقترح', 'Proposed Action'),
+    t('المسؤول المقترح', 'Proposed Responsible'),
+    t('المدة المقترحة', 'Proposed Timeline'),
+    t('مؤشر النجاح', 'Success Measure'),
+  ],
+
+  widths: [1.0, 1.3, 2.6, 1.1, 1.3, 1.3],
+
+  rows: improvementRows,
+
+  notes: t(
+    'خطة التحسين مبنية على قواعد ثابتة دون استخدام AI. الأولوية تعطى لنواتج التعلم ذات أكبر فجوة سالبة عن المستهدف. المسؤول والمدة مقترحان وقابلان للتعديل عند الاعتماد الرسمي.',
+    'The improvement plan is generated using fixed rules without AI. Priority is given to learning outcomes with the largest negative target gaps. Responsibility and timeline are proposed and may be adjusted during formal approval.',
   ),
 };
   /*
