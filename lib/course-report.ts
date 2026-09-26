@@ -258,7 +258,7 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
    * Grade distribution is kept as a compact summary on slide 1
    * instead of creating another slide.
    */
-  const gradeSummary = c.grades
+/*  const gradeSummary = c.grades
     .filter((g) => g.count !== null)
     .map((g) => `${g.grade}: ${f(g.count, 0)}`)
     .join(' | ');
@@ -288,7 +288,7 @@ const weaknessSummary =
         'لا توجد فجوات سالبة محسوبة.',
         'No calculated learning-outcome gaps are below target.',
       );
-
+*/
   /*
    * ------------------------------------------------------------
    * Slide 2 improvement plan
