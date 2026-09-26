@@ -170,181 +170,354 @@ export const outcomeGap = (o: Outcome) =>
   o.actual === null || o.target === null ? null : o.actual - o.target;
 export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
   const t = (ar: string, en: string) => (lang === 'ar' ? ar : en);
-  const f = (n: number | null) =>
-    n === null ? t('غير متاح', 'N/A') : String(Math.round(n * 100) / 100);
-  const pages: ReportPage[] = [
-    {
-      title: c.title,
-      subtitle: `${c.code} • ${c.academicYear} • ${c.semester}`,
-      cover: true,
-      courseId: c.code,
-    },
-    {
-      title: t(
-        'لوحة المقرر وتوزيع الدرجات',
-        'Course dashboard and grade distribution',
-      ),
-      subtitle: c.code,
-      lines: [
-        `${c.program} • ${t('المسجلون', 'Started')}: ${f(c.started)} • ${t('المكتملون', 'Completed')}: ${f(c.completed)}`,
-      ],
-      headers: [
-        t('الدرجة', 'Grade'),
-        t('العدد', 'Count'),
-        t('نسبة المصدر %', 'Source %'),
-      ],
-      rows: c.grades.map((g) => [g.grade, f(g.count), f(g.percentage)]),
-    },
-    {
-      title: t('توزيع درجات المقرر', 'Course grade distribution'),
-      subtitle: c.code,
-      chart: {
-        metric: 'mean',
-        label: t('العدد', 'Count'),
-        sampleLabel: 'Total',
-        note: t(
-          'الأعداد كما وردت في المصدر؛ لا تُجمع مع حالات الطلبة.',
-          'Counts as documented; do not add overlapping student statuses.',
-        ),
-        categories: c.grades.map((g) => g.grade),
-        values: c.grades.map((g) => g.count),
-        valid: c.grades.map(() => c.completed || 0),
-        max: Math.max(1, ...c.grades.map((g) => g.count || 0)),
-      },
-    },
-    {
-      title: t('حالات الطلبة', 'Student statuses'),
-      subtitle: c.code,
-      headers: [t('الحالة', 'Status'), t('العدد', 'Count')],
-      rows: c.statuses.map((s) => [s.label, f(s.count)]),
-      lines: [
-        t(
-          'حالات المصدر قد تتداخل؛ لا تُجمع مع توزيع الدرجات.',
-          'Source statuses may overlap; they are not added to grade counts.',
-        ),
-      ],
-    },
-    {
-      title: t('نواتج التعلم والمستهدفات', 'Learning outcomes and targets'),
-      subtitle: c.code,
-      headers: [
-        'CLO',
-        'PLO',
-        t('المستهدف %', 'Target %'),
-        t('الفعلي %', 'Actual %'),
-        t('الفجوة بالنقاط', 'Gap (pp)'),
-      ],
-      rows: c.outcomes.map((o) => [
-        o.code,
-        o.plo,
-        f(o.target),
-        f(o.actual),
-        f(outcomeGap(o)),
-      ]),
-    },
-  ];
-  for (let i = 0; i < c.outcomes.length; i += 12) {
-    const outcomes = c.outcomes.slice(i, i + 12);
-    pages.splice(4, 0, {
-      title: t(
-        'النتائج الفعلية لنواتج التعلم',
-        'Actual learning outcome results',
-      ),
-      subtitle: c.code,
-      chart: {
-        metric: 'mean',
-        label: t('الفعلي %', 'Actual %'),
-        sampleLabel: 'Target %',
-        note: t(
-          'قياس مباشر؛ المستهدف الخاص بكل ناتج موضح في الجدول.',
-          'Direct assessment; each outcome target is listed in the table.',
-        ),
-        categories: outcomes.map((o) => 'CLO ' + o.code),
-        values: outcomes.map((o) => o.actual),
-        valid: outcomes.map((o) => o.target ?? 0),
-        max: 100,
-      },
-    });
-  }
-  for (const o of c.outcomes)
-    pages.push({
-      title: `${t('دليل ناتج التعلم', 'Learning outcome evidence')} ${o.code}`,
-      subtitle: `${c.code} • PLO ${o.plo}`,
-      lines: [
-        o.description,
-        `${t('طريقة القياس', 'Assessment')}: ${o.method}`,
-        `${t('تعليق المصدر', 'Source comment')}: ${o.comment || '—'}`,
-      ],
-    });
-  const strong = c.outcomes.filter((o) => (outcomeGap(o) ?? -1) >= 0);
-  const weak = c.outcomes
-    .filter((o) => outcomeGap(o) !== null && outcomeGap(o)! < 0)
+
+  const f = (n: number | null, digits = 1) =>
+    n === null
+      ? t('غير متاح', 'N/A')
+      : n.toLocaleString('en-US', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: digits,
+        });
+
+  /*
+   * ------------------------------------------------------------
+   * Rule engine
+   * ------------------------------------------------------------
+   * Strength  = Actual >= Target
+   * Weakness  = Actual < Target
+   * Missing Target/Actual = not classified
+   * ------------------------------------------------------------
+   */
+
+  const validOutcomes = c.outcomes.filter(
+    (o) => o.target !== null && o.actual !== null,
+  );
+
+  const strengths = validOutcomes
+    .filter((o) => outcomeGap(o)! >= 0)
+    .sort((a, b) => outcomeGap(b)! - outcomeGap(a)!);
+
+  const weaknesses = validOutcomes
+    .filter((o) => outcomeGap(o)! < 0)
     .sort((a, b) => outcomeGap(a)! - outcomeGap(b)!);
-  pages.push({
-    title: t(
-      'نقاط القوة وفرص التحسين',
-      'Strengths and improvement opportunities',
-    ),
-    subtitle: c.code,
-    lines: [
-      ...strong.map(
-        (o) =>
-          `${t('تحقق المستهدف', 'Target met')} CLO ${o.code}: ${f(o.actual)}% ≥ ${f(o.target)}%.`,
-      ),
-      ...weak.map(
-        (o) =>
-          `${t('أقل من المستهدف', 'Below target')} CLO ${o.code}: ${f(o.actual)}% / ${f(o.target)}% (${f(outcomeGap(o))} pp).`,
-      ),
+
+  /*
+   * Limit the visible CLO table so the exporter does not paginate
+   * a single course into extra slides.
+   *
+   * The full data is still read and analyzed; this only controls
+   * what appears visually on the first slide.
+   */
+  const visibleOutcomes = c.outcomes.slice(0, 7);
+  const hiddenOutcomeCount = Math.max(0, c.outcomes.length - visibleOutcomes.length);
+
+  /*
+   * ------------------------------------------------------------
+   * Improvement-action library
+   * ------------------------------------------------------------
+   */
+
+  const actionForOutcome = (o: Outcome): string => {
+    const plo = (o.plo || '').trim().toUpperCase();
+
+    if (plo.startsWith('K')) {
+      return t(
+        'إضافة أمثلة توضيحية ومراجعة مركزة واختبارات قصيرة تكوينية مرتبطة بناتج التعلم.',
+        'Add focused examples, revision activities, and formative quizzes aligned with the learning outcome.',
+      );
+    }
+
+    if (plo.startsWith('S')) {
+      return t(
+        'زيادة التدريبات التطبيقية وتمارين حل المشكلات مع تغذية راجعة مباشرة ثم إعادة القياس.',
+        'Increase practical exercises and problem-solving activities with direct feedback, then reassess.',
+      );
+    }
+
+    if (plo.startsWith('V')) {
+      return t(
+        'إضافة أنشطة تطبيقية ودراسات حالة مرتبطة بالناتج مع معايير تقييم واضحة وتغذية راجعة.',
+        'Add applied activities and case-based tasks aligned with the outcome, supported by clear rubrics and feedback.',
+      );
+    }
+
+    return t(
+      'مراجعة أدوات التقييم المرتبطة بالناتج، وتحديد المهارات المتعثرة، وتوفير تدريب إضافي وتغذية راجعة ثم إعادة القياس.',
+      'Review assessment items linked to the outcome, identify difficult skills, provide additional practice and feedback, then reassess.',
+    );
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * Slide 1 data
+   * ------------------------------------------------------------
+   */
+
+  const resultRows = visibleOutcomes.map((o) => {
+    const gap = outcomeGap(o);
+
+    let status = t('غير متاح', 'N/A');
+
+    if (gap !== null) {
+      status =
+        gap >= 0
+          ? t('تحقق المستهدف', 'Target met')
+          : t('أقل من المستهدف', 'Below target');
+    }
+
+    return [
+      o.code,
+      o.plo || '—',
+      f(o.target),
+      f(o.actual),
+      gap === null ? t('غير متاح', 'N/A') : f(gap),
+      status,
+    ];
+  });
+
+  /*
+   * Grade distribution is kept as a compact summary on slide 1
+   * instead of creating another slide.
+   */
+  const gradeSummary = c.grades
+    .filter((g) => g.count !== null)
+    .map((g) => `${g.grade}: ${f(g.count, 0)}`)
+    .join(' | ');
+
+  const strengthSummary =
+    strengths.length > 0
+      ? strengths
+          .slice(0, 2)
+          .map(
+            (o) =>
+              `CLO ${o.code}: ${f(o.actual)}% ≥ ${f(o.target)}%`,
+          )
+          .join(' | ')
+      : t(
+          'لا توجد نواتج تعلم ذات بيانات مكتملة تجاوزت المستهدف.',
+          'No learning outcomes with complete data exceeded the target.',
+        );
+
+  const weaknessSummary =
+    weaknesses.length > 0
+      ? weaknesses
+          .slice(0, 2)
+          .map(
+            (o) =>
+              `CLO ${o.code}: ${f(o.actual)}% < ${f(o.target)}%`,
+          )
+          .join(' | ')
+      : t(
+          'لا توجد فجوات سالبة محسوبة.',
+          'No calculated learning-outcome gaps are below target.',
+        );
+
+  /*
+   * ------------------------------------------------------------
+   * Slide 2 improvement plan
+   * ------------------------------------------------------------
+   *
+   * Keep the most important weaknesses only so the report always
+   * remains two slides per course.
+   */
+
+  const priorityWeaknesses = weaknesses.slice(0, 4);
+
+  const improvementRows =
+    priorityWeaknesses.length > 0
+      ? priorityWeaknesses.map((o) => [
+          `CLO ${o.code}`,
+          `${f(o.actual)}% / ${f(o.target)}%\n${f(outcomeGap(o))} pp`,
+          actionForOutcome(o),
+          t('أعضاء المقرر', 'Course Members'),
+          t(
+            'الدورة القادمة',
+            'Next cycle',
+          ),
+          `${t('تحقيق', 'Reach')} ≥ ${f(o.target)}%`,
+        ])
+      : [
+          [
+            t('المحافظة على الأداء', 'Maintain performance'),
+            t(
+              'جميع نواتج التعلم ذات البيانات المكتملة حققت المستهدف.',
+              'All learning outcomes with complete data met their targets.',
+            ),
+            t(
+              'المحافظة على الممارسات الحالية وإعادة القياس في الدورة القادمة.',
+              'Maintain current practices and reassess in the next cycle.',
+            ),
+            t('أعضاء المقرر', 'Course Members'),
+            t('الدورة القادمة', 'Next cycle'),
+            t(
+              'استمرار تحقيق المستهدفات.',
+              'Maintain target achievement.',
+            ),
+          ],
+        ];
+
+  /*
+   * ------------------------------------------------------------
+   * Data-quality warnings
+   * ------------------------------------------------------------
+   */
+
+  const dataWarnings: string[] = [];
+
+  if (!c.outcomes.length) {
+    dataWarnings.push(
       t(
-        'هذه نتائج قياس مباشر مرتبطة بـPLO؛ لا تمثل رضا المستجيبين في استبيان PLO أو CES.',
-        'These are direct assessment results mapped to PLOs, not PLO or CES survey satisfaction.',
+        'لم يتم العثور على نواتج تعلم قابلة للتحليل.',
+        'No analyzable learning outcomes were found.',
+      ),
+    );
+  }
+
+  const missingOutcomes = c.outcomes.filter(
+    (o) => o.target === null || o.actual === null,
+  ).length;
+
+  if (missingOutcomes > 0) {
+    dataWarnings.push(
+      t(
+        `${missingOutcomes} من نواتج التعلم تحتوي على Target أو Actual غير متاح.`,
+        `${missingOutcomes} learning outcome(s) have a missing Target or Actual value.`,
+      ),
+    );
+  }
+
+  if (hiddenOutcomeCount > 0) {
+    dataWarnings.push(
+      t(
+        `تم تحليل جميع نواتج التعلم، ويعرض الجدول أول 7 فقط للمحافظة على شريحتين لكل مقرر.`,
+        `All learning outcomes were analyzed; the table displays the first 7 only to preserve the two-slide-per-course format.`,
+      ),
+    );
+  }
+
+  if (weaknesses.length > 4) {
+    dataWarnings.push(
+      t(
+        `تم تحديد ${weaknesses.length} نقاط ضعف، وتعرض خطة التحسين أهم 4 حسب أكبر فجوة عن المستهدف.`,
+        `${weaknesses.length} weaknesses were identified; the improvement plan shows the four largest target gaps.`,
+      ),
+    );
+  }
+
+  /*
+   * ============================================================
+   * SLIDE 1
+   * Course Results & Analysis
+   * ============================================================
+   */
+
+  const page1: ReportPage = {
+    section: 'course-results-analysis',
+    courseId: c.code,
+
+    title: t(
+      'نتائج وتحليل المقرر',
+      'Course Results & Analysis',
+    ),
+
+    subtitle: [
+      c.code,
+      c.title,
+      c.program,
+      c.academicYear,
+      c.semester,
+    ]
+      .filter(Boolean)
+      .join(' • '),
+
+    headers: [
+      'CLO',
+      'PLO',
+      t('المستهدف %', 'Target %'),
+      t('الفعلي %', 'Actual %'),
+      t('الفجوة', 'Gap'),
+      t('الحالة', 'Status'),
+    ],
+
+    /*
+     * Total width = 8.6 inches
+     */
+    widths: [0.75, 0.75, 1.15, 1.15, 1.0, 3.8],
+
+    rows: resultRows,
+
+    lines: [
+      `${t('الطلاب', 'Students')}: ${t('المسجلون', 'Started')} ${f(
+        c.started,
+        0,
+      )} | ${t('المكتملون', 'Completed')} ${f(c.completed, 0)}`,
+
+      gradeSummary
+        ? `${t('توزيع الدرجات', 'Grade Distribution')}: ${gradeSummary}`
+        : t(
+            'توزيع الدرجات غير متاح في المصدر.',
+            'Grade distribution is not available in the source.',
+          ),
+
+      `${t('نقاط القوة', 'Strengths')}: ${strengthSummary}`,
+
+      `${t('نقاط الضعف', 'Weaknesses')}: ${weaknessSummary}`,
+
+      ...dataWarnings.map(
+        (warning) =>
+          `${t('تنبيه بيانات', 'Data Warning')}: ${warning}`,
       ),
     ],
-  });
-  for (const o of weak)
-    pages.push({
-      title: t(
-        'خطة تحسين مقترحة للمراجعة',
-        'Proposed improvement plan for review',
-      ),
-      subtitle: `${c.code} • CLO ${o.code} • PLO ${o.plo}`,
-      lines: [
-        `${t('الدليل', 'Evidence')}: ${f(o.actual)}% / ${f(o.target)}%.`,
-        t(
-          'مراجعة أسئلة التقييم المرتبطة بالناتج، وتحديد المهارات المتعثرة، ثم تقديم تدريبات وتغذية راجعة وإعادة القياس.',
-          'Review outcome assessment items, identify difficult skills, provide practice and feedback, then reassess.',
-        ),
-        `${t('المؤشر المستهدف', 'Success measure')}: ${f(o.target)}%.`,
-        t(
-          'المسؤول والموعد: يحددان عند الاعتماد. المقترح قائم على قواعد حسابية دون AI ولا يثبت تنفيذ إجراء سابق.',
-          'Owner and deadline: to be assigned on approval. Rule-based proposal without AI; no prior implementation is assumed.',
-        ),
-      ],
-    });
-  if (!weak.length)
-    pages.push({
-      title: t('المتابعة والتحسين', 'Monitoring and improvement'),
-      lines: [
-        t(
-          'المحافظة على الممارسات الناجحة وإعادة القياس في الدورة القادمة. غياب فجوة محسوبة لا يثبت غياب جميع المشكلات.',
-          'Maintain effective practices and reassess next cycle. No calculated gap does not prove absence of all issues.',
-        ),
-      ],
-    });
-  if (c.recommendations.length)
-    pages.push({
-      title: t('توصيات التقرير الأصلي', 'Original report recommendations'),
-      lines: c.recommendations,
-    });
-  for (const row of c.previousPlan)
-    pages.push({
-      title: t('الخطة الواردة في المصدر', 'Plan documented in source'),
-      lines: row,
-    });
-  if (c.issues.length)
-    pages.push({
-      title: t('مراجعة جودة البيانات', 'Data quality review'),
-      lines: c.issues,
-    });
-  return pages;
+
+    notes: t(
+      'يتم تحديد نقاط القوة والضعف آليًا بمقارنة Actual مع Target لكل CLO. القيم المفقودة لا تُعامل كصفر ولا تُستخدم لإثبات وجود ضعف.',
+      'Strengths and weaknesses are determined automatically by comparing Actual with Target for each CLO. Missing values are neither treated as zero nor used to infer a weakness.',
+    ),
+  };
+
+  /*
+   * ============================================================
+   * SLIDE 2
+   * Strengths, Weaknesses & Improvement Plan
+   * ============================================================
+   */
+
+  const page2: ReportPage = {
+    section: 'course-improvement-plan',
+    courseId: c.code,
+
+    title: t(
+      'نقاط القوة والضعف وخطة التحسين',
+      'Strengths, Weaknesses & Improvement Plan',
+    ),
+
+    subtitle: [c.code, c.title].filter(Boolean).join(' • '),
+
+    headers: [
+      t('الملاحظة', 'Finding'),
+      t('الدليل', 'Evidence'),
+      t('الإجراء المقترح', 'Proposed Action'),
+      t('المسؤول', 'Responsible'),
+      t('المدة', 'Timeline'),
+      t('مؤشر النجاح', 'Success Measure'),
+    ],
+
+    /*
+     * Total width = 8.6 inches
+     */
+    widths: [1.0, 1.3, 2.6, 1.1, 1.3, 1.3],
+
+    rows: improvementRows,
+
+    notes: t(
+      'خطة التحسين مبنية على قواعد ثابتة دون استخدام AI. الأولوية تعطى لنواتج التعلم ذات أكبر فجوة سالبة عن المستهدف. المسؤول والمدة قابلان للتعديل عند الاعتماد الرسمي.',
+      'The improvement plan is generated using fixed rules without AI. Priority is given to learning outcomes with the largest negative target gaps. Responsibility and timeline may be adjusted during formal approval.',
+    ),
+  };
+
+  /*
+   * IMPORTANT:
+   * Exactly TWO pages are returned for each course.
+   */
+  return [page1, page2];
 }
