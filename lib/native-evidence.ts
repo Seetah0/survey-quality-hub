@@ -65,6 +65,13 @@ export async function nativeChart(
   data: ReportChart,
   lang: Lang,
   number: number,
+  options?: {
+    x?: number;
+    y?: number;
+    w?: number;
+    h?: number;
+    relId?: string;
+  },
 ) {
   const template = templates[data.metric];
 
@@ -249,6 +256,11 @@ book.file(
       `<Relationship Id="rIdStyles" Type="${R}/styles" Target="styles.xml"/></Relationships>`,
     ),
   );
+  const frameX = options?.x ?? 1.0;
+const frameY = options?.y ?? 2.25;
+const frameW = options?.w ?? 8.55;
+const frameH = options?.h ?? 3.35;
+const relId = options?.relId ?? 'rIdChart';
   return {
     chart,
     workbook: await book.generateAsync({
@@ -256,6 +268,26 @@ book.file(
       compression: 'DEFLATE',
     }),
     relationship: `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdChartSnapshot1" Type="${R}/package" Target="../embeddings/chart${number}.xlsx"/></Relationships>`,
-    frame: `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="2000" name="Editable ${positive ? 'Positivity' : 'Mean'} Chart"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x="${emu(1.0)}" y="${emu(2.25)}"/><a:ext cx="${emu(8.55)}" cy="${emu(3.35)}"/></p:xfrm><a:graphic><a:graphicData uri="${C}"><c:chart xmlns:c="${C}" xmlns:r="${R}" r:id="rIdChart"/></a:graphicData></a:graphic></p:graphicFrame>`,
-  };
+frame: `<p:graphicFrame>
+  <p:nvGraphicFramePr>
+    <p:cNvPr id="${2000 + number}" name="Editable Chart ${number}"/>
+    <p:cNvGraphicFramePr/>
+    <p:nvPr/>
+  </p:nvGraphicFramePr>
+
+  <p:xfrm>
+    <a:off x="${emu(frameX)}" y="${emu(frameY)}"/>
+    <a:ext cx="${emu(frameW)}" cy="${emu(frameH)}"/>
+  </p:xfrm>
+
+  <a:graphic>
+    <a:graphicData uri="${C}">
+      <c:chart
+        xmlns:c="${C}"
+        xmlns:r="${R}"
+        r:id="${relId}"
+      />
+    </a:graphicData>
+  </a:graphic>
+</p:graphicFrame>`,  };
 }
