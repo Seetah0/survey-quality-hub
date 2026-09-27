@@ -211,19 +211,19 @@ export async function nativeChart(
 
   // CT_DLbls has a strict sequence. In particular, txPr must precede
   // dLblPos and every show* element or PowerPoint may repair the chart.
-  const dataLabels = `
-    <c:dLbls>
-      <c:numFmt formatCode="${format}" sourceLinked="0"/>
-      ${textProperties()}
-      <c:dLblPos val="outEnd"/>
-      <c:showLegendKey val="0"/>
-      <c:showVal val="1"/>
-      <c:showCatName val="0"/>
-      <c:showSerName val="0"/>
-      <c:showPercent val="0"/>
-      <c:showBubbleSize val="0"/>
-      <c:showLeaderLines val="0"/>
-    </c:dLbls>`;
+ const dataLabels = `
+  <c:dLbls>
+    <c:numFmt formatCode="${format}" sourceLinked="0"/>
+    ${textProperties()}
+    <c:dLblPos val="${chartData.stacked ? 'inEnd' : 'outEnd'}"/>
+    <c:showLegendKey val="0"/>
+    <c:showVal val="1"/>
+    <c:showCatName val="0"/>
+    <c:showSerName val="0"/>
+    <c:showPercent val="0"/>
+    <c:showBubbleSize val="0"/>
+    <c:showLeaderLines val="0"/>
+  </c:dLbls>`;
 
   const grouping = chartData.stacked ? 'stacked' : 'clustered';
   const overlap = chartData.stacked ? 100 : 0;
