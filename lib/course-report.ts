@@ -168,10 +168,17 @@ export async function readCourse(bytes: Uint8Array) {
 }
 export const outcomeGap = (o: Outcome) =>
   o.actual === null || o.target === null ? null : o.actual - o.target;
-export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
-  const t = (ar: string, en: string) => (lang === 'ar' ? ar : en);
+export function coursePages(
+  c: CourseReport,
+  lang: Lang,
+): ReportPage[] {
+  const t = (ar: string, en: string) =>
+    lang === 'ar' ? ar : en;
 
-  const f = (n: number | null, digits = 1) =>
+  const f = (
+    n: number | null,
+    digits = 1,
+  ) =>
     n === null
       ? t('غير متاح', 'N/A')
       : n.toLocaleString('en-US', {
@@ -180,45 +187,44 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
         });
 
   /*
-   * ------------------------------------------------------------
-   * Rule engine
-   * ------------------------------------------------------------
-   * Strength  = Actual >= Target
-   * Weakness  = Actual < Target
-   * Missing Target/Actual = not classified
-   * ------------------------------------------------------------
+   * ============================================================
+   * RULE ENGINE
+   * ============================================================
+   *
+   * Actual >= Target = target met
+   * Actual < Target  = improvement required
+   * Missing values   = excluded from comparison
    */
 
   const validOutcomes = c.outcomes.filter(
-    (o) => o.target !== null && o.actual !== null,
+    (o) =>
+      o.target !== null &&
+      o.actual !== null,
   );
 
-  /*  const strengths = validOutcomes
-    .filter((o) => outcomeGap(o)! >= 0)
-    .sort((a, b) => outcomeGap(b)! - outcomeGap(a)!);*/
-
   const weaknesses = validOutcomes
-    .filter((o) => outcomeGap(o)! < 0)
-    .sort((a, b) => outcomeGap(a)! - outcomeGap(b)!); 
+    .filter(
+      (o) =>
+        outcomeGap(o) !== null &&
+        outcomeGap(o)! < 0,
+    )
+    .sort(
+      (a, b) =>
+        outcomeGap(a)! - outcomeGap(b)!,
+    );
 
   /*
-   * Limit the visible CLO table so the exporter does not paginate
-   * a single course into extra slides.
-   *
-   * The full data is still read and analyzed; this only controls
-   * what appears visually on the first slide.
-   */
-  const visibleOutcomes = c.outcomes.slice(0, 7);
-  const hiddenOutcomeCount = Math.max(0, c.outcomes.length - visibleOutcomes.length);
-
-  /*
-   * ------------------------------------------------------------
-   * Improvement-action library
-   * ------------------------------------------------------------
+   * ============================================================
+   * IMPROVEMENT ACTION LIBRARY
+   * ============================================================
    */
 
-  const actionForOutcome = (o: Outcome): string => {
-    const plo = (o.plo || '').trim().toUpperCase();
+  const actionForOutcome = (
+    o: Outcome,
+  ): string => {
+    const plo = (o.plo || '')
+      .trim()
+      .toUpperCase();
 
     if (plo.startsWith('K')) {
       return t(
@@ -248,99 +254,105 @@ export function coursePages(c: CourseReport, lang: Lang): ReportPage[] {
   };
 
   /*
-   * ------------------------------------------------------------
-   * Slide 1 data
-   * ------------------------------------------------------------
-   */
-
- 
-  /*
-   * Grade distribution is kept as a compact summary on slide 1
-   * instead of creating another slide.
-   */
-/*  const gradeSummary = c.grades
-    .filter((g) => g.count !== null)
-    .map((g) => `${g.grade}: ${f(g.count, 0)}`)
-    .join(' | ');
-
-  const strengthSummary =
-    strengths.length > 0
-      ? strengths
-          .map(
-            (o) =>
-              `CLO ${o.code}: ${f(o.actual)}% ≥ ${f(o.target)}%`,
-          )
-          .join(' | ')
-      : t(
-          'لا توجد نواتج تعلم ذات بيانات مكتملة تجاوزت المستهدف.',
-          'No learning outcomes with complete data exceeded the target.',
-        );
-
-const weaknessSummary =
-  weaknesses.length > 0
-    ? weaknesses
-        .map(
-          (o) =>
-            `CLO ${o.code}: ${f(o.actual)}% < ${f(o.target)}%`,
-        )
-        .join(' | ')
-    : t(
-        'لا توجد فجوات سالبة محسوبة.',
-        'No calculated learning-outcome gaps are below target.',
-      );
-*/
-  /*
-   * ------------------------------------------------------------
-   * Slide 2 improvement plan
-   * ------------------------------------------------------------
+   * ============================================================
+   * GRADE DISTRIBUTION
+   * ============================================================
    *
-   * Keep the most important weaknesses only so the report always
-   * remains two slides per course.
+   * Original comprehensive report groups:
+   *
+   * A,A+
+   * B,B+
+   * C,C+
+   * D,D+
+   * F
+   * WD
+   * DN
    */
 
-  const priorityWeaknesses = weaknesses.slice(0, 4);
+  const gradeCount = (
+    ...labels: string[]
+  ) =>
+    labels.reduce(
+      (sum, label) =>
+        sum +
+        (c.grades.find(
+          (g) => g.grade === label,
+        )?.count ?? 0),
+      0,
+    );
 
-const improvementRows =
-  priorityWeaknesses.length > 0
-    ? priorityWeaknesses.map((o) => [
-        t(
-          `تحسين تحقيق CLO ${o.code} الذي بلغ ${f(o.actual)}% مقابل مستهدف ${f(o.target)}%.`,
-          `Improve achievement of CLO ${o.code}, which reached ${f(o.actual)}% against a target of ${f(o.target)}%.`,
-        ),
+  /*
+   * WD / DN are parsed as student statuses,
+   * not normal letter grades.
+   */
+  const statusCount = (
+    ...labels: string[]
+  ) =>
+    labels.reduce(
+      (sum, label) =>
+        sum +
+        (c.statuses.find(
+          (s) =>
+            s.label
+              .trim()
+              .toUpperCase() ===
+            label.toUpperCase(),
+        )?.count ?? 0),
+      0,
+    );
 
-        actionForOutcome(o),
+  const groupedGrades = [
+    {
+      grade: 'A,A+',
+      count: gradeCount('A', 'A+'),
+    },
+    {
+      grade: 'B,B+',
+      count: gradeCount('B', 'B+'),
+    },
+    {
+      grade: 'C,C+',
+      count: gradeCount('C', 'C+'),
+    },
+    {
+      grade: 'D,D+',
+      count: gradeCount('D', 'D+'),
+    },
+    {
+      grade: 'F',
+      count: gradeCount('F'),
+    },
+    {
+      grade: 'WD',
+      count: statusCount('WD'),
+    },
+    {
+      grade: 'DN',
+      count: statusCount('DN'),
+    },
+  ];
 
-        t(
-          'أعضاء المقرر',
-          'Course Members',
-        ),
+  /*
+   * ============================================================
+   * ACTION PLAN
+   * ============================================================
+   *
+   * Keep a maximum of four priority weaknesses
+   * so the course remains exactly two slides.
+   */
 
-        t(
-          'بداية الدورة القادمة',
-          'Beginning of next Cycle',
-        ),
+  const priorityWeaknesses =
+    weaknesses.slice(0, 4);
 
-        t(
-          'نهاية الدورة القادمة',
-          'End of next Cycle',
-        ),
-
-        t(
-          'يحدد عند الاعتماد',
-          'To be determined upon approval',
-        ),
-      ])
-    : [
-        [
+  const improvementRows =
+    priorityWeaknesses.length > 0
+      ? priorityWeaknesses.map((o) => [
           t(
-            'المحافظة على مستوى تحقيق نواتج التعلم.',
-            'Maintain the current level of learning-outcome achievement.',
+            `تحسين تحقيق CLO ${o.code} الذي بلغ ${f(o.actual)}% مقابل مستهدف ${f(o.target)}%.`,
+            `Improve achievement of CLO ${o.code}, which reached ${f(o.actual)}% against a target of ${f(o.target)}%.`,
           ),
 
-          t(
-            'الاستمرار في الممارسات الحالية ومتابعة النتائج في الدورة القادمة.',
-            'Continue current practices and monitor results in the next cycle.',
-          ),
+          actionForOutcome(o),
 
           t(
             'أعضاء المقرر',
@@ -361,237 +373,278 @@ const improvementRows =
             'يحدد عند الاعتماد',
             'To be determined upon approval',
           ),
-        ],
-      ];
+        ])
+      : [
+          [
+            t(
+              'المحافظة على مستوى تحقيق نواتج التعلم.',
+              'Maintain the current level of learning-outcome achievement.',
+            ),
 
-  /*
-   * ------------------------------------------------------------
-   * Data-quality warnings
-   * ------------------------------------------------------------
-   */
+            t(
+              'الاستمرار في الممارسات الحالية ومتابعة النتائج في الدورة القادمة.',
+              'Continue current practices and monitor results in the next cycle.',
+            ),
 
-  const dataWarnings: string[] = [];
+            t(
+              'أعضاء المقرر',
+              'Course Members',
+            ),
 
-  if (!c.outcomes.length) {
-    dataWarnings.push(
-      t(
-        'لم يتم العثور على نواتج تعلم قابلة للتحليل.',
-        'No analyzable learning outcomes were found.',
-      ),
-    );
-  }
+            t(
+              'بداية الدورة القادمة',
+              'Beginning of next Cycle',
+            ),
 
-  const missingOutcomes = c.outcomes.filter(
-    (o) => o.target === null || o.actual === null,
-  ).length;
+            t(
+              'نهاية الدورة القادمة',
+              'End of next Cycle',
+            ),
 
-  if (missingOutcomes > 0) {
-    dataWarnings.push(
-      t(
-        `${missingOutcomes} من نواتج التعلم تحتوي على Target أو Actual غير متاح.`,
-        `${missingOutcomes} learning outcome(s) have a missing Target or Actual value.`,
-      ),
-    );
-  }
-
-  if (hiddenOutcomeCount > 0) {
-    dataWarnings.push(
-      t(
-        `تم تحليل جميع نواتج التعلم، ويعرض الجدول أول 7 فقط للمحافظة على شريحتين لكل مقرر.`,
-        `All learning outcomes were analyzed; the table displays the first 7 only to preserve the two-slide-per-course format.`,
-      ),
-    );
-  }
-
-  if (weaknesses.length > 4) {
-    dataWarnings.push(
-      t(
-        `تم تحديد ${weaknesses.length} نقاط ضعف، وتعرض خطة التحسين أهم 4 حسب أكبر فجوة عن المستهدف.`,
-        `${weaknesses.length} weaknesses were identified; the improvement plan shows the four largest target gaps.`,
-      ),
-    );
-  }
+            t(
+              'يحدد عند الاعتماد',
+              'To be determined upon approval',
+            ),
+          ],
+        ];
 
   /*
    * ============================================================
    * SLIDE 1
-   * Course Results & Analysis
+   *
+   * LEARNING OUTCOMES ACHIEVEMENT
+   * +
+   * GRADES DISTRIBUTION
    * ============================================================
    */
-const gradeCount = (...labels: string[]) =>
-  labels.reduce(
-    (sum, label) =>
-      sum + (c.grades.find((g) => g.grade === label)?.count ?? 0),
-    0,
-  );
 
-const groupedGrades = [
-  { grade: 'A,A+', count: gradeCount('A', 'A+') },
-  { grade: 'B,B+', count: gradeCount('B', 'B+') },
-  { grade: 'C,C+', count: gradeCount('C', 'C+') },
-  { grade: 'D,D+', count: gradeCount('D', 'D+') },
-  { grade: 'F', count: gradeCount('F') },
-  { grade: 'WD', count: gradeCount('WD') },
-  { grade: 'DN', count: gradeCount('DN') },
-];
-const page1: ReportPage = {
-  section: 'course-dashboard',
-  courseId: c.code,
+  const page1: ReportPage = {
+    section: 'course-dashboard',
 
-title:
-  c.code && c.title
-    ? `${c.code} ${c.title}`
-    : c.code || c.title || 'Course',
+    courseId: c.code,
 
-subtitle: [
-  c.program,
-  c.semester ? `Level ${c.semester}` : null,
-  c.academicYear,
-]
-  .filter(Boolean)
-  .join(' • '),
-  chart: {
-  metric: 'mean',
+    title:
+      c.code && c.title
+        ? `${c.code} ${c.title}`
+        : c.code ||
+          c.title ||
+          'Course',
 
-  label: 'Target',
+    subtitle: [
+      c.program,
+      c.semester
+        ? `Level ${c.semester}`
+        : null,
+      c.academicYear,
+    ]
+      .filter(Boolean)
+      .join(' • '),
 
-  comparisonLabel: 'Actual 2024-2025',
-body += textShape(
-  shape++,
-  page.title,
-  2.1,
-  1.10,
-  6.2,
-  0.40,
-  20,
-  'en',
-  'C4312E',
-  true,
-);
+    /*
+     * LEARNING OUTCOMES ACHIEVEMENT
+     *
+     * Target + Actual are stacked
+     * like the 2024-2025 comprehensive report.
+     */
+    chart: {
+      metric: 'mean',
 
-if (page.subtitle) {
-  body += textShape(
-    shape++,
-    page.subtitle,
-    2.1,
-    1.55,
-    6.2,
-    0.28,
-    10,
-    'en',
-    '57667B',
-    false,
-  );
-}
-  note: 'LEARNING OUTCOMES ACHIEVEMENT',
+      label: 'Target',
 
-  categories: c.outcomes.map((o) => o.code),
+      comparisonLabel: 'Actual',
 
-  values: c.outcomes.map((o) => o.target),
+      note:
+        'LEARNING OUTCOMES ACHIEVEMENT',
 
-  comparisonValues: c.outcomes.map((o) => o.actual),
+      categories: c.outcomes.map(
+        (o) => o.code,
+      ),
 
-  valid: c.outcomes.map((o) => o.target ?? 0),
+      values: c.outcomes.map(
+        (o) => o.target,
+      ),
 
-  max: 200,
+      comparisonValues:
+        c.outcomes.map(
+          (o) => o.actual,
+        ),
 
-  stacked: true,
-},
+      valid: c.outcomes.map(
+        (o) => o.target ?? 0,
+      ),
 
-secondaryChart: {
-  metric: 'mean',
+      /*
+       * Target + Actual are stacked,
+       * therefore the scale can reach 200.
+       */
+      max: 200,
 
-  label: "Student's Count",
+      stacked: true,
+    },
 
-  note: 'GRADES DISTRIBUTION',
+    /*
+     * GRADES DISTRIBUTION
+     */
+    secondaryChart: {
+      metric: 'mean',
 
-  categories: groupedGrades.map((g) => g.grade),
+      label: "Student's Count",
 
-  values: groupedGrades.map((g) => g.count),
+      note:
+        'GRADES DISTRIBUTION',
 
-  valid: groupedGrades.map((g) => g.count ?? 0),
+      categories:
+        groupedGrades.map(
+          (g) => g.grade,
+        ),
 
-  max: Math.max(
-    100,
-    ...groupedGrades.map((g) => g.count ?? 0),
-  ),
-},
-  
- metrics: [
-  {
-    label: 'Covered Planned Topics',
-    value: 'N/A',
-  },
-  {
-    label: 'CES Result',
-    value: 'N/A',
-  },
-  {
-    label: 'Students Count',
-    value:
-      c.started === null
-        ? 'N/A'
-        : `${c.started}`,
-  },
-  {
-    label: 'Completed the course',
-    value:
-      c.completed === null
-        ? 'N/A'
-        : `${c.completed}`,
-  },
-],
+      values:
+        groupedGrades.map(
+          (g) => g.count,
+        ),
 
-  notes: t(
-    'السلايد الأول مخصص لعرض الرسمين البيانيين ومؤشرات المقرر فقط.',
-    'This slide is dedicated to the two charts and course indicators only.',
-  ),
-};
+      valid:
+        groupedGrades.map(
+          (g) => g.count,
+        ),
 
- const page2: ReportPage = {
-  section: 'course-improvement-plan',
-  courseId: c.code,
-title: 'ACTION PLAN',
+      max: Math.max(
+        100,
+        ...groupedGrades.map(
+          (g) => g.count,
+        ),
+      ),
+    },
 
-subtitle:
-  c.code && c.title
-    ? `${c.code} ${c.title}`
-    : c.code || c.title || 'Course',
-   bannerTitle: c.academicYear
-  ? `${c.academicYear} Action Plan`
-  : 'Action Plan',
-   
-  headers: [
-    t('التوصيات', 'Recommendations'),
-    t('الإجراءات', 'Actions'),
-    t(
-      'مسؤولية التنفيذ',
-      'Responsibility For Implementation',
-    ),
-    t('البداية', 'Start'),
-    t('النهاية', 'End'),
-    t('الدعم المطلوب', 'Needed Support'),
-  ],
+    /*
+     * Course indicators
+     *
+     * Covered Planned Topics and CES
+     * remain N/A until traceable source data
+     * is connected to the course report.
+     */
+    metrics: [
+      {
+        label:
+          'Covered Planned Topics',
+        value: 'N/A',
+      },
 
-  widths: [
-    2.05,
-    2.35,
-    1.45,
-    0.9,
-    0.9,
-    0.95,
-  ],
+      {
+        label:
+          'CES Result',
+        value: 'N/A',
+      },
 
-  rows: improvementRows,
+      {
+        label:
+          'Students Count',
 
-  notes: t(
-    'خطة العمل مولدة بقواعد ثابتة دون استخدام AI استنادًا إلى نواتج التعلم الأقل من المستهدف. المسؤول والتوقيت والدعم المقترح تخضع للاعتماد الرسمي.',
-    'The action plan is generated using fixed rules without AI based on learning outcomes below target. Responsibility, timing, and required support remain subject to formal approval.',
-  ),
-};
+        value:
+          c.started === null
+            ? 'N/A'
+            : `${c.started}`,
+      },
+
+      {
+        label:
+          'Completed the course',
+
+        value:
+          c.completed === null
+            ? 'N/A'
+            : `${c.completed}`,
+      },
+    ],
+
+    notes:
+      'The first course slide contains Learning Outcomes Achievement, Grades Distribution, and source-backed course indicators.',
+  };
+
   /*
-   * IMPORTANT:
-   * Exactly TWO pages are returned for each course.
+   * ============================================================
+   * SLIDE 2
+   *
+   * ACTION PLAN
+   * ============================================================
    */
-  return [page1, page2];
+
+  const page2: ReportPage = {
+    section:
+      'course-improvement-plan',
+
+    courseId: c.code,
+
+    title:
+      'ACTION PLAN',
+
+    subtitle:
+      c.code && c.title
+        ? `${c.code} ${c.title}`
+        : c.code ||
+          c.title ||
+          'Course',
+
+    bannerTitle:
+      c.academicYear
+        ? `${c.academicYear} Action Plan`
+        : 'Action Plan',
+
+    headers: [
+      t(
+        'التوصيات',
+        'Recommendations',
+      ),
+
+      t(
+        'الإجراءات',
+        'Actions',
+      ),
+
+      t(
+        'مسؤولية التنفيذ',
+        'Responsibility For Implementation',
+      ),
+
+      t(
+        'البداية',
+        'Start',
+      ),
+
+      t(
+        'النهاية',
+        'End',
+      ),
+
+      t(
+        'الدعم المطلوب',
+        'Needed Support',
+      ),
+    ],
+
+    widths: [
+      2.05,
+      2.35,
+      1.45,
+      0.9,
+      0.9,
+      0.95,
+    ],
+
+    rows:
+      improvementRows,
+
+    notes: t(
+      'خطة العمل مولدة بقواعد ثابتة دون استخدام AI استنادًا إلى نواتج التعلم الأقل من المستهدف. المسؤول والتوقيت والدعم المقترح تخضع للاعتماد الرسمي.',
+      'The action plan is generated using fixed rules without AI based on learning outcomes below target. Responsibility, timing, and required support remain subject to formal approval.',
+    ),
+  };
+
+  /*
+   * Exactly TWO slides per course.
+   */
+  return [
+    page1,
+    page2,
+  ];
 }
