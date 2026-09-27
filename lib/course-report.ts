@@ -438,16 +438,18 @@ const page1: ReportPage = {
   section: 'course-dashboard',
   courseId: c.code,
 
-  title: c.code && c.title ? `${c.code} ${c.title}` : c.title || c.code || t('المقرر', 'Course'),
+title:
+  c.code && c.title
+    ? `${c.code} ${c.title}`
+    : c.code || c.title || 'Course',
 
 subtitle: [
   c.program,
+  c.semester ? `Level ${c.semester}` : null,
   c.academicYear,
-  c.semester,
 ]
   .filter(Boolean)
   .join(' • '),
-
   chart: {
   metric: 'mean',
 
@@ -523,14 +525,16 @@ secondaryChart: {
  const page2: ReportPage = {
   section: 'course-improvement-plan',
   courseId: c.code,
+title: 'ACTION PLAN',
 
-  title: 'ACTION PLAN',
-
-  subtitle:
-    c.code && c.title
-      ? `${c.code} ${c.title}`
-      : [c.code, c.title].filter(Boolean).join(' • '),
-
+subtitle:
+  c.code && c.title
+    ? `${c.code} ${c.title}`
+    : c.code || c.title || 'Course',
+   bannerTitle: c.academicYear
+  ? `${c.academicYear} Action Plan`
+  : 'Action Plan',
+   
   headers: [
     t('التوصيات', 'Recommendations'),
     t('الإجراءات', 'Actions'),
