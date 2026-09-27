@@ -136,6 +136,12 @@ export async function nativeChart(
       /<c:lang val="[^"]+"\/>/,
       `<c:lang val="${lang === 'ar' ? 'ar-SA' : 'en-US'}"/>`,
     );
+  if (data.stacked) {
+  chart = chart.replace(
+    '<c:grouping val="clustered"/>',
+    '<c:grouping val="stacked"/>',
+  );
+}
   if (comparisonValues) {
   const secondSeries = `
     <c:ser>
