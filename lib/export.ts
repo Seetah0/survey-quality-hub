@@ -648,4 +648,3 @@ export function coursePages(
     page2,
   ];
 }
-}
