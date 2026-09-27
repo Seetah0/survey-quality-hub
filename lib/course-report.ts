@@ -418,7 +418,22 @@ const improvementRows =
    * Course Results & Analysis
    * ============================================================
    */
+const gradeCount = (...labels: string[]) =>
+  labels.reduce(
+    (sum, label) =>
+      sum + (c.grades.find((g) => g.grade === label)?.count ?? 0),
+    0,
+  );
 
+const groupedGrades = [
+  { grade: 'A,A+', count: gradeCount('A', 'A+') },
+  { grade: 'B,B+', count: gradeCount('B', 'B+') },
+  { grade: 'C,C+', count: gradeCount('C', 'C+') },
+  { grade: 'D,D+', count: gradeCount('D', 'D+') },
+  { grade: 'F', count: gradeCount('F') },
+  { grade: 'WD', count: gradeCount('WD') },
+  { grade: 'DN', count: gradeCount('DN') },
+];
 const page1: ReportPage = {
   section: 'course-dashboard',
   courseId: c.code,
@@ -455,33 +470,25 @@ subtitle: [
   stacked: true,
 },
 
-  secondaryChart: {
-    metric: 'mean',
+secondaryChart: {
+  metric: 'mean',
 
-    label: t(
-      "Student's Count",
-      "Student's Count",
-    ),
+  label: "Student's Count",
 
-    note: t(
-      'GRADES DISTRIBUTION',
-      'GRADES DISTRIBUTION',
-    ),
+  note: 'GRADES DISTRIBUTION',
 
-    categories: c.grades.map((g) => g.grade),
+  categories: groupedGrades.map((g) => g.grade),
 
-    values: c.grades.map((g) => g.count),
+  values: groupedGrades.map((g) => g.count),
 
-    valid: c.grades.map((g) => g.count ?? 0),
+  valid: groupedGrades.map((g) => g.count ?? 0),
 
-    max: Math.max(
-      100,
-      ...c.grades
-        .map((g) => g.count ?? 0)
-        .filter((n) => Number.isFinite(n)),
-    ),
-  },
-
+  max: Math.max(
+    100,
+    ...groupedGrades.map((g) => g.count ?? 0),
+  ),
+},
+  
  metrics: [
   {
     label: 'Covered Planned Topics',
