@@ -434,33 +434,26 @@ subtitle: [
   .join(' • '),
 
   chart: {
-    metric: 'mean',
+  metric: 'mean',
 
-    label: t(
-      'Target',
-      'Target',
-    ),
+  label: 'Target',
 
-    comparisonLabel: t(
-      'Actual',
-      'Actual',
-    ),
+  comparisonLabel: 'Actual 2024-2025',
 
-    note: t(
-      'LEARNING OUTCOMES ACHIEVEMENT',
-      'LEARNING OUTCOMES ACHIEVEMENT',
-    ),
+  note: 'LEARNING OUTCOMES ACHIEVEMENT',
 
-    categories: c.outcomes.map((o) => o.code),
+  categories: c.outcomes.map((o) => o.code),
 
-    values: c.outcomes.map((o) => o.target),
+  values: c.outcomes.map((o) => o.target),
 
-    comparisonValues: c.outcomes.map((o) => o.actual),
+  comparisonValues: c.outcomes.map((o) => o.actual),
 
-    valid: c.outcomes.map((o) => o.target ?? 0),
+  valid: c.outcomes.map((o) => o.target ?? 0),
 
-    max: 100,
-  },
+  max: 200,
+
+  stacked: true,
+},
 
   secondaryChart: {
     metric: 'mean',
