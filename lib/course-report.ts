@@ -4,6 +4,7 @@ import { validateZip } from './analysis';
 import type { Lang } from './analysis';
 import type { ReportPage } from './report-model';
 
+
 export type Outcome = {
   code: string;
   description: string;
@@ -49,8 +50,16 @@ const num = (s: string) => {
     : null;
 };
 export function parseCourseXml(xml: string): CourseReport {
-  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('UNSUPPORTED_DOCUMENT');
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) {
+    throw new Error('UNSUPPORTED_DOCUMENT');
+  }
+  const normalizedXml = xml
+    .replace(/^\s*<\?xml[^>]*\?>\s*/i, '')
+    .trimStart();
+  const doc = new DOMParser().parseFromString(
+    normalizedXml,
+    'application/xml',
+  );
   const tables = Array.from(doc.getElementsByTagNameNS(ns, 'tbl')).map((t) =>
     Array.from(t.getElementsByTagNameNS(ns, 'tr')).map((r) =>
       Array.from(r.getElementsByTagNameNS(ns, 'tc')).map((c) =>
@@ -59,13 +68,16 @@ export function parseCourseXml(xml: string): CourseReport {
     ),
   );
   const cells = tables.flat(2);
-  const field = (label: string) =>
-    cells
-      .find((c) => c.toLowerCase().startsWith(label.toLowerCase() + ':'))
-      ?.split(':')
-      .slice(1)
-      .join(':')
-      .trim() || '';
+  const field = (label: string) => {
+    const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`^${escapedLabel}\\s*:\\s*`, 'i');
+    return (
+      cells
+        .find((cell) => pattern.test(cell))
+        ?.replace(pattern, '')
+        .trim() || ''
+    );
+  };
   const c: CourseReport = {
     title: field('Course Title'),
     code: field('Course Code'),
@@ -175,6 +187,7 @@ export function coursePages(
   const t = (ar: string, en: string) =>
     lang === 'ar' ? ar : en;
 
+
   const f = (
     n: number | null,
     digits = 1,
@@ -186,6 +199,7 @@ export function coursePages(
           maximumFractionDigits: digits,
         });
 
+
   /*
    * ============================================================
    * RULE ENGINE
@@ -196,11 +210,13 @@ export function coursePages(
    * Missing values   = excluded from comparison
    */
 
+
   const validOutcomes = c.outcomes.filter(
     (o) =>
       o.target !== null &&
       o.actual !== null,
   );
+
 
   const weaknesses = validOutcomes
     .filter(
@@ -213,11 +229,13 @@ export function coursePages(
         outcomeGap(a)! - outcomeGap(b)!,
     );
 
+
   /*
    * ============================================================
    * IMPROVEMENT ACTION LIBRARY
    * ============================================================
    */
+
 
   const actionForOutcome = (
     o: Outcome,
@@ -226,12 +244,14 @@ export function coursePages(
       .trim()
       .toUpperCase();
 
+
     if (plo.startsWith('K')) {
       return t(
         'إضافة أمثلة توضيحية ومراجعة مركزة واختبارات قصيرة تكوينية مرتبطة بناتج التعلم.',
         'Add focused examples, revision activities, and formative quizzes aligned with the learning outcome.',
       );
     }
+
 
     if (plo.startsWith('S')) {
       return t(
@@ -240,6 +260,7 @@ export function coursePages(
       );
     }
 
+
     if (plo.startsWith('V')) {
       return t(
         'إضافة أنشطة تطبيقية ودراسات حالة مرتبطة بالناتج مع معايير تقييم واضحة وتغذية راجعة.',
@@ -247,11 +268,13 @@ export function coursePages(
       );
     }
 
+
     return t(
       'مراجعة أدوات التقييم المرتبطة بالناتج، وتحديد المهارات المتعثرة، وتوفير تدريب إضافي وتغذية راجعة ثم إعادة القياس.',
       'Review assessment items linked to the outcome, identify difficult skills, provide additional practice and feedback, then reassess.',
     );
   };
+
 
   /*
    * ============================================================
@@ -269,6 +292,7 @@ export function coursePages(
    * DN
    */
 
+
   const gradeCount = (
     ...labels: string[]
   ) =>
@@ -280,6 +304,7 @@ export function coursePages(
         )?.count ?? 0),
       0,
     );
+
 
   /*
    * WD / DN are parsed as student statuses,
@@ -300,6 +325,7 @@ export function coursePages(
         )?.count ?? 0),
       0,
     );
+
 
   const groupedGrades = [
     {
@@ -332,6 +358,7 @@ export function coursePages(
     },
   ];
 
+
   /*
    * ============================================================
    * ACTION PLAN
@@ -341,8 +368,10 @@ export function coursePages(
    * so the course remains exactly two slides.
    */
 
+
   const priorityWeaknesses =
     weaknesses.slice(0, 4);
+
 
   const improvementRows =
     priorityWeaknesses.length > 0
@@ -352,22 +381,27 @@ export function coursePages(
             `Improve achievement of CLO ${o.code}, which reached ${f(o.actual)}% against a target of ${f(o.target)}%.`,
           ),
 
+
           actionForOutcome(o),
+
 
           t(
             'أعضاء المقرر',
             'Course Members',
           ),
 
+
           t(
             'بداية الدورة القادمة',
             'Beginning of next Cycle',
           ),
 
+
           t(
             'نهاية الدورة القادمة',
             'End of next Cycle',
           ),
+
 
           t(
             'يحدد عند الاعتماد',
@@ -381,25 +415,30 @@ export function coursePages(
               'Maintain the current level of learning-outcome achievement.',
             ),
 
+
             t(
               'الاستمرار في الممارسات الحالية ومتابعة النتائج في الدورة القادمة.',
               'Continue current practices and monitor results in the next cycle.',
             ),
+
 
             t(
               'أعضاء المقرر',
               'Course Members',
             ),
 
+
             t(
               'بداية الدورة القادمة',
               'Beginning of next Cycle',
             ),
 
+
             t(
               'نهاية الدورة القادمة',
               'End of next Cycle',
             ),
+
 
             t(
               'يحدد عند الاعتماد',
@@ -407,6 +446,7 @@ export function coursePages(
             ),
           ],
         ];
+
 
   /*
    * ============================================================
@@ -418,10 +458,13 @@ export function coursePages(
    * ============================================================
    */
 
+
   const page1: ReportPage = {
     section: 'course-dashboard',
 
+
     courseId: c.code,
+
 
     title:
       c.code && c.title
@@ -429,6 +472,7 @@ export function coursePages(
         : c.code ||
           c.title ||
           'Course',
+
 
     subtitle: [
       c.program,
@@ -440,6 +484,7 @@ export function coursePages(
       .filter(Boolean)
       .join(' • '),
 
+
     /*
      * LEARNING OUTCOMES ACHIEVEMENT
      *
@@ -449,29 +494,37 @@ export function coursePages(
     chart: {
       metric: 'mean',
 
+
       label: 'Target',
+
 
       comparisonLabel: 'Actual',
 
+
       note:
         'LEARNING OUTCOMES ACHIEVEMENT',
+
 
       categories: c.outcomes.map(
         (o) => o.code,
       ),
 
+
       values: c.outcomes.map(
         (o) => o.target,
       ),
+
 
       comparisonValues:
         c.outcomes.map(
           (o) => o.actual,
         ),
 
+
       valid: c.outcomes.map(
         (o) => o.target ?? 0,
       ),
+
 
       /*
        * Target + Actual are stacked,
@@ -479,8 +532,10 @@ export function coursePages(
        */
       max: 200,
 
+
       stacked: true,
     },
+
 
     /*
      * GRADES DISTRIBUTION
@@ -488,25 +543,31 @@ export function coursePages(
     secondaryChart: {
       metric: 'mean',
 
+
       label: "Student's Count",
+
 
       note:
         'GRADES DISTRIBUTION',
+
 
       categories:
         groupedGrades.map(
           (g) => g.grade,
         ),
 
+
       values:
         groupedGrades.map(
           (g) => g.count,
         ),
 
+
       valid:
         groupedGrades.map(
           (g) => g.count,
         ),
+
 
       max: Math.max(
         100,
@@ -515,6 +576,7 @@ export function coursePages(
         ),
       ),
     },
+
 
     /*
      * Course indicators
@@ -530,15 +592,18 @@ export function coursePages(
         value: 'N/A',
       },
 
+
       {
         label:
           'CES Result',
         value: 'N/A',
       },
 
+
       {
         label:
           'Students Count',
+
 
         value:
           c.started === null
@@ -546,9 +611,11 @@ export function coursePages(
             : `${c.started}`,
       },
 
+
       {
         label:
           'Completed the course',
+
 
         value:
           c.completed === null
@@ -557,9 +624,11 @@ export function coursePages(
       },
     ],
 
+
     notes:
       'The first course slide contains Learning Outcomes Achievement, Grades Distribution, and source-backed course indicators.',
   };
+
 
   /*
    * ============================================================
@@ -569,14 +638,18 @@ export function coursePages(
    * ============================================================
    */
 
+
   const page2: ReportPage = {
     section:
       'course-improvement-plan',
 
+
     courseId: c.code,
+
 
     title:
       'ACTION PLAN',
+
 
     subtitle:
       c.code && c.title
@@ -585,10 +658,12 @@ export function coursePages(
           c.title ||
           'Course',
 
+
     bannerTitle:
       c.academicYear
         ? `${c.academicYear} Action Plan`
         : 'Action Plan',
+
 
     headers: [
       t(
@@ -596,31 +671,37 @@ export function coursePages(
         'Recommendations',
       ),
 
+
       t(
         'الإجراءات',
         'Actions',
       ),
+
 
       t(
         'مسؤولية التنفيذ',
         'Responsibility For Implementation',
       ),
 
+
       t(
         'البداية',
         'Start',
       ),
+
 
       t(
         'النهاية',
         'End',
       ),
 
+
       t(
         'الدعم المطلوب',
         'Needed Support',
       ),
     ],
+
 
     widths: [
       2.05,
@@ -631,14 +712,17 @@ export function coursePages(
       0.95,
     ],
 
+
     rows:
       improvementRows,
+
 
     notes: t(
       'خطة العمل مولدة بقواعد ثابتة دون استخدام AI استنادًا إلى نواتج التعلم الأقل من المستهدف. المسؤول والتوقيت والدعم المقترح تخضع للاعتماد الرسمي.',
       'The action plan is generated using fixed rules without AI based on learning outcomes below target. Responsibility, timing, and required support remain subject to formal approval.',
     ),
   };
+
 
   /*
    * Exactly TWO slides per course.
