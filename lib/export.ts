@@ -1,970 +1,651 @@
 import JSZip from 'jszip';
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  Table,
-  TableRow,
-  TableCell,
-  WidthType,
-  AlignmentType,
-  HeadingLevel,
-  PageBreak,
-} from 'docx';
-import theme from './report-theme.json' with { type: 'json' };
-import { type Analysis, type Group, type Lang, formatMetric } from './analysis';
-import {
-  buildSurveyReport,
-  type ReportPage,
-  type ReportOptions,
-} from './report-model';
-import { nativeChart, nativeTable } from './native-evidence';
-const xml = (v: string | number | null | undefined) =>
-  String(v ?? '')
-    // oxlint-disable-next-line no-control-regex -- XML 1.0 forbids these control bytes.
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
-    .replace(
-      /[&<>"']/g,
-      (c) =>
-        ({
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&apos;',
-        })[c]!,
-    );
-const A = 'http://schemas.openxmlformats.org/drawingml/2006/main',
-  P = 'http://schemas.openxmlformats.org/presentationml/2006/main',
-  R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-type Page = ReportPage;
-export function paginateTables(pages: Page[]): Page[] {
-  return pages.flatMap((page) => {
-    if (!page.rows?.length || !page.headers) return [page];
-    const widths =
-      page.widths || page.headers.map(() => 8.6 / page.headers!.length);
-    const result: Page[] = [];
-    let rows: string[][] = [],
-      heights: number[] = [],
-      height = 0.48;
-    for (const row of page.rows) {
-      const lines = Math.max(
-        ...row.map((cell, i) =>
-          cell
-            .split('\n')
-            .reduce(
-              (n, line) =>
-                n +
-                Math.max(
-                  1,
-                  Math.ceil(line.length / Math.max(8, (widths[i] - 0.12) * 10)),
-                ),
-              0,
-            ),
-        ),
-      );
-      const rowHeight = Math.max(0.48, 0.16 + lines * 0.19);
-      if (rowHeight > 4.02) throw new Error('EXPORT_TEXT_TOO_LONG');
-      if (height + rowHeight > 4.5 && rows.length) {
-        result.push({ ...page, rows, rowHeights: heights });
-        rows = [];
-        heights = [];
-        height = 0.48;
-      }
-      rows.push(row);
-      heights.push(rowHeight);
-      height += rowHeight;
+import { DOMParser } from '@xmldom/xmldom';
+import { validateZip } from './analysis';
+import type { Lang } from './analysis';
+import type { ReportPage } from './report-model';
+
+export type Outcome = {
+  code: string;
+  description: string;
+  plo: string;
+  method: string;
+  target: number | null;
+  actual: number | null;
+  comment: string;
+};
+export type CourseReport = {
+  title: string;
+  code: string;
+  program: string;
+  department: string;
+  academicYear: string;
+  semester: string;
+  started: number | null;
+  completed: number | null;
+  grades: { grade: string; count: number | null; percentage: number | null }[];
+  statuses: { label: string; count: number | null }[];
+  outcomes: Outcome[];
+  recommendations: string[];
+  previousPlan: string[][];
+  issues: string[];
+};
+const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const text = (node: Element) =>
+  Array.from(node.getElementsByTagNameNS(ns, 'p'))
+    .map((p) =>
+      Array.from(p.getElementsByTagNameNS(ns, 't'))
+        .map((t) => t.textContent || '')
+        .join(''),
+    )
+    .join('\n')
+    .trim();
+const num = (s: string) => {
+  const value = s
+    .trim()
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 1632))
+    .replace(/[%٪,\s]/g, '');
+  return /^\d+(\.\d+)?$/.test(value) && Number.isFinite(Number(value))
+    ? Number(value)
+    : null;
+};
+export function parseCourseXml(xml: string): CourseReport {
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new Error('UNSUPPORTED_DOCUMENT');
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const tables = Array.from(doc.getElementsByTagNameNS(ns, 'tbl')).map((t) =>
+    Array.from(t.getElementsByTagNameNS(ns, 'tr')).map((r) =>
+      Array.from(r.getElementsByTagNameNS(ns, 'tc')).map((c) =>
+        text(c as unknown as Element),
+      ),
+    ),
+  );
+  const cells = tables.flat(2);
+  const field = (label: string) =>
+    cells
+      .find((c) => c.toLowerCase().startsWith(label.toLowerCase() + ':'))
+      ?.split(':')
+      .slice(1)
+      .join(':')
+      .trim() || '';
+  const c: CourseReport = {
+    title: field('Course Title'),
+    code: field('Course Code'),
+    department: field('Department'),
+    program: field('Program'),
+    academicYear: field('Academic Year'),
+    semester: field('Semester'),
+    started: num(field('Number of Students (Starting the Course)')),
+    completed: num(field('Number of Students (Completed the Course)')),
+    grades: [],
+    statuses: [],
+    outcomes: [],
+    recommendations: [],
+    previousPlan: [],
+    issues: [],
+  };
+  if (!c.code || !c.title) throw new Error('COURSE_TEMPLATE_REQUIRED');
+  const gt = tables.find((t) =>
+    t.some((r) => r.includes('A+') && r.includes('F')),
+  );
+  if (gt) {
+    const headers = gt.find((r) => r.includes('A+'))!;
+    const counts = gt.find((r) => /number of students/i.test(r[0] || '')) || [];
+    const percentages = gt.find((r) => /percentage/i.test(r[0] || '')) || [];
+    for (let i = 1; i < headers.length; i++) {
+      const grade = headers[i].trim();
+      if (/^(A\+?|B\+?|C\+?|D\+?|F)$/.test(grade))
+        c.grades.push({
+          grade,
+          count: num(counts[i] || ''),
+          percentage: num(percentages[i] || ''),
+        });
+      else if (grade)
+        c.statuses.push({ label: grade, count: num(counts[i] || '') });
     }
-    if (rows.length) result.push({ ...page, rows, rowHeights: heights });
-    return result;
-  });
-}
-export function selectGroup(analysis: Analysis, id?: string) {
-  if (!id || id === 'all') return analysis.overall;
-  for (const p of analysis.programs) {
-    if (p.id === id) return p;
-    for (const l of p.levels || []) {
-      if (l.id === id) return l;
-      for (const c of l.courses || []) if (c.id === id) return c;
-    }
-    for (const c of p.courses || []) if (c.id === id) return c;
   }
-  throw new Error('NOT_FOUND');
+  const ot = tables.find((t) =>
+    t.some((r) => r.some((cell) => /Related PLO/i.test(cell))),
+  );
+  for (const row of ot || []) {
+    if (!/^\d+\.\d+$/.test(row[0]?.trim()) || !row[1]?.trim() || row.length < 7)
+      continue;
+    c.outcomes.push({
+      code: row[0],
+      description: row[1],
+      plo: row[2],
+      method: row[3],
+      target: num(row[4]),
+      actual: num(row[5]),
+      comment: row[6],
+    });
+  }
+  const oi = ot ? tables.indexOf(ot) : -1;
+  if (oi >= 0 && tables[oi + 1]?.[0]?.length === 1)
+    c.recommendations = tables[oi + 1].flat().filter(Boolean);
+  const pt = tables.find((t) =>
+    t.some(
+      (r) =>
+        /Recommendations/i.test(r[0] || '') &&
+        /Actions/i.test(r[1] || '') &&
+        /Support/i.test(r[2] || ''),
+    ),
+  );
+  c.previousPlan = (pt?.slice(1) || []).filter((r) =>
+    r.some((v) => v.trim() && !/^(none|-|n\/a)$/i.test(v.trim())),
+  );
+  if (!c.outcomes.length)
+    c.issues.push('لم يُعثر على جدول نواتج تعلم قابل للتحليل.');
+  if (
+    c.grades.length &&
+    c.grades.every((g) => g.count !== null) &&
+    c.completed !== null &&
+    c.grades.reduce((s, g) => s + (g.count || 0), 0) !== c.completed
+  )
+    c.issues.push(
+      'مجموع توزيع الدرجات لا يساوي عدد الطلبة المكتملين في المصدر.',
+    );
+  for (const o of c.outcomes) {
+    if (o.actual === null || o.target === null)
+      c.issues.push(`الناتج ${o.code}: نتيجة أو مستهدف غير متاح.`);
+    if (
+      (o.actual !== null && o.actual > 100) ||
+      (o.target !== null && o.target > 100)
+    ) {
+      c.issues.push(
+        `الناتج ${o.code}: نسبة خارج النطاق 0–100؛ استُبعدت من المقارنة.`,
+      );
+      if (o.actual !== null && o.actual > 100) o.actual = null;
+      if (o.target !== null && o.target > 100) o.target = null;
+    }
+  }
+  return c;
 }
-export function reportPages(
-  a: Analysis,
-  lang: Lang,
-  groupId?: string,
-  options: ReportOptions = {},
-): Page[] {
-  if (a.kind === 'raw')
-    return paginateTables(buildSurveyReport(a, lang, groupId, options));
-  const pages = legacyReportPages(a, lang, groupId);
-  pages.push({
-    section: 'proposed-improvement-plan',
-    title:
-      lang === 'ar'
-        ? 'خطة تحسين جودة البيانات'
-        : 'Data Quality Improvement Plan',
-    lines:
-      lang === 'ar'
-        ? [
-            'توحيد عناوين الأسئلة والسنوات والتحقق من أخطاء Excel المبلغ عنها.',
-            'استكمال أعداد المستجيبين وتعريف المقاييس قبل المقارنة بين السنوات.',
-            'المسؤول والموعد يُحددان بعد الاعتماد. القيم التاريخية وحدها لا تثبت تنفيذ إجراء أو أثره.',
-          ]
-        : [
-            'Standardize question labels and years and investigate reported Excel errors.',
-            'Complete respondent counts and scale definitions before comparing years.',
-            'Owner and deadline require approval. Historical aggregates alone do not establish implementation or impact.',
-          ],
-  });
-  pages.push({
-    section: 'end',
-    title: lang === 'ar' ? 'نهاية التقرير' : 'End of Report',
-    cover: true,
-  });
-  return pages;
+export async function readCourse(bytes: Uint8Array) {
+  validateZip(bytes);
+  const zip = await JSZip.loadAsync(bytes);
+  const file = zip.file('word/document.xml');
+  if (!file) throw new Error('COURSE_TEMPLATE_REQUIRED');
+  return parseCourseXml(await file.async('string'));
 }
-export function legacyReportPages(
-  a: Analysis,
+export const outcomeGap = (o: Outcome) =>
+  o.actual === null || o.target === null ? null : o.actual - o.target;
+export function coursePages(
+  c: CourseReport,
   lang: Lang,
-  groupId?: string,
-): Page[] {
-  const t = (ar: string, en: string) => (lang === 'ar' ? ar : en),
-    f = (n: number | null, d = 2) => formatMetric(n, d, lang),
-    pct = (n: number | null) => (n === null ? f(null) : f(n, 1) + '%');
-  const bandText = (b: string | null) =>
-    b === 'high'
-      ? t('جودة مرتفعة', 'High quality')
-      : b === 'acceptable'
-        ? t('مقبول', 'Acceptable')
-        : b === 'improve'
-          ? t('يحتاج إلى تحسين', 'Needs improvement')
-          : t('غير مصنف', 'Not classified');
-  const g = selectGroup(a, groupId);
-  const pages: Page[] = [
+): ReportPage[] {
+  const t = (ar: string, en: string) =>
+    lang === 'ar' ? ar : en;
+
+  const f = (
+    n: number | null,
+    digits = 1,
+  ) =>
+    n === null
+      ? t('غير متاح', 'N/A')
+      : n.toLocaleString('en-US', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: digits,
+        });
+
+  /*
+   * ============================================================
+   * RULE ENGINE
+   * ============================================================
+   *
+   * Actual >= Target = target met
+   * Actual < Target  = improvement required
+   * Missing values   = excluded from comparison
+   */
+
+  const validOutcomes = c.outcomes.filter(
+    (o) =>
+      o.target !== null &&
+      o.actual !== null,
+  );
+
+  const weaknesses = validOutcomes
+    .filter(
+      (o) =>
+        outcomeGap(o) !== null &&
+        outcomeGap(o)! < 0,
+    )
+    .sort(
+      (a, b) =>
+        outcomeGap(a)! - outcomeGap(b)!,
+    );
+
+  /*
+   * ============================================================
+   * IMPROVEMENT ACTION LIBRARY
+   * ============================================================
+   */
+
+  const actionForOutcome = (
+    o: Outcome,
+  ): string => {
+    const plo = (o.plo || '')
+      .trim()
+      .toUpperCase();
+
+    if (plo.startsWith('K')) {
+      return t(
+        'إضافة أمثلة توضيحية ومراجعة مركزة واختبارات قصيرة تكوينية مرتبطة بناتج التعلم.',
+        'Add focused examples, revision activities, and formative quizzes aligned with the learning outcome.',
+      );
+    }
+
+    if (plo.startsWith('S')) {
+      return t(
+        'زيادة التدريبات التطبيقية وتمارين حل المشكلات مع تغذية راجعة مباشرة ثم إعادة القياس.',
+        'Increase practical exercises and problem-solving activities with direct feedback, then reassess.',
+      );
+    }
+
+    if (plo.startsWith('V')) {
+      return t(
+        'إضافة أنشطة تطبيقية ودراسات حالة مرتبطة بالناتج مع معايير تقييم واضحة وتغذية راجعة.',
+        'Add applied activities and case-based tasks aligned with the outcome, supported by clear rubrics and feedback.',
+      );
+    }
+
+    return t(
+      'مراجعة أدوات التقييم المرتبطة بالناتج، وتحديد المهارات المتعثرة، وتوفير تدريب إضافي وتغذية راجعة ثم إعادة القياس.',
+      'Review assessment items linked to the outcome, identify difficult skills, provide additional practice and feedback, then reassess.',
+    );
+  };
+
+  /*
+   * ============================================================
+   * GRADE DISTRIBUTION
+   * ============================================================
+   *
+   * Original comprehensive report groups:
+   *
+   * A,A+
+   * B,B+
+   * C,C+
+   * D,D+
+   * F
+   * WD
+   * DN
+   */
+
+  const gradeCount = (
+    ...labels: string[]
+  ) =>
+    labels.reduce(
+      (sum, label) =>
+        sum +
+        (c.grades.find(
+          (g) => g.grade === label,
+        )?.count ?? 0),
+      0,
+    );
+
+  /*
+   * WD / DN are parsed as student statuses,
+   * not normal letter grades.
+   */
+  const statusCount = (
+    ...labels: string[]
+  ) =>
+    labels.reduce(
+      (sum, label) =>
+        sum +
+        (c.statuses.find(
+          (s) =>
+            s.label
+              .trim()
+              .toUpperCase() ===
+            label.toUpperCase(),
+        )?.count ?? 0),
+      0,
+    );
+
+  const groupedGrades = [
     {
-      cover: true,
-      title: t('تقرير تحليل استبيانات الجودة', 'Survey Quality Report'),
-      subtitle: g.id === 'all' ? a.type : g.name,
-      lines: [
-        new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-GB'),
-        t('نسخة اختبار للمراجعة', 'Testing version for review'),
-      ],
+      grade: 'A,A+',
+      count: gradeCount('A', 'A+'),
+    },
+    {
+      grade: 'B,B+',
+      count: gradeCount('B', 'B+'),
+    },
+    {
+      grade: 'C,C+',
+      count: gradeCount('C', 'C+'),
+    },
+    {
+      grade: 'D,D+',
+      count: gradeCount('D', 'D+'),
+    },
+    {
+      grade: 'F',
+      count: gradeCount('F'),
+    },
+    {
+      grade: 'WD',
+      count: statusCount('WD'),
+    },
+    {
+      grade: 'DN',
+      count: statusCount('DN'),
     },
   ];
-  const summary = (g: Group, title: string) => ({
-    title,
-    subtitle: [...new Set([g.program, g.code, g.level].filter(Boolean))].join(
-      ' · ',
-    ),
-    lines: [
-      `${t('الاستجابات', 'Responses')}: ${f(g.rows, 0)} · ${t('المتوقع', 'Expected')}: ${f(g.expected, 0)} · ${t('معدل الاستجابة', 'Response rate')}: ${pct(g.responseRate)}`,
-      `${t('المتوسط الموزون', 'Weighted mean')}: ${f(g.overall.mean)} / ${a.max}`,
-      `${t('الإيجابية', 'Positivity')}: ${pct(g.overall.positivity)} · ${t('الإجابات الصحيحة', 'Valid scores')}: ${f(g.overall.valid, 0)}`,
-      `${t('تصنيف المتوسط', 'Mean classification')}: ${bandText(g.overall.meanBand)} · ${t('تصنيف الإيجابية', 'Positivity classification')}: ${bandText(g.overall.positivityBand)}`,
-      ...(g.smallSample
-        ? [
+
+  /*
+   * ============================================================
+   * ACTION PLAN
+   * ============================================================
+   *
+   * Keep a maximum of four priority weaknesses
+   * so the course remains exactly two slides.
+   */
+
+  const priorityWeaknesses =
+    weaknesses.slice(0, 4);
+
+  const improvementRows =
+    priorityWeaknesses.length > 0
+      ? priorityWeaknesses.map((o) => [
+          t(
+            `تحسين تحقيق CLO ${o.code} الذي بلغ ${f(o.actual)}% مقابل مستهدف ${f(o.target)}%.`,
+            `Improve achievement of CLO ${o.code}, which reached ${f(o.actual)}% against a target of ${f(o.target)}%.`,
+          ),
+
+          actionForOutcome(o),
+
+          t(
+            'أعضاء المقرر',
+            'Course Members',
+          ),
+
+          t(
+            'بداية الدورة القادمة',
+            'Beginning of next Cycle',
+          ),
+
+          t(
+            'نهاية الدورة القادمة',
+            'End of next Cycle',
+          ),
+
+          t(
+            'يحدد عند الاعتماد',
+            'To be determined upon approval',
+          ),
+        ])
+      : [
+          [
             t(
-              'تنبيه: حجم العينة أقل من 10 استجابات.',
-              'Caution: sample size is below 10 responses.',
+              'المحافظة على مستوى تحقيق نواتج التعلم.',
+              'Maintain the current level of learning-outcome achievement.',
             ),
-          ]
-        : []),
-      ...(g.priority
-        ? [
+
             t(
-              'أولوية تحسين: إيجابية Q15 أقل من 60%.',
-              'Improvement priority: Q15 positivity below 60%.',
+              'الاستمرار في الممارسات الحالية ومتابعة النتائج في الدورة القادمة.',
+              'Continue current practices and monitor results in the next cycle.',
             ),
-          ]
-        : []),
-    ],
-  });
-  const questionPages = (g: Group) => {
-    const qs = a.questions.filter((q) => q.kind === 'rating');
-    for (let i = 0; i < qs.length; i += 8)
-      pages.push({
-        title: g.id === 'all' ? t('جميع البرامج', 'All programs') : g.name,
-        subtitle: t(
-          'نتائج الأسئلة · * أقل من 10 إجابات صحيحة',
-          'Question results · * fewer than 10 valid answers',
+
+            t(
+              'أعضاء المقرر',
+              'Course Members',
+            ),
+
+            t(
+              'بداية الدورة القادمة',
+              'Beginning of next Cycle',
+            ),
+
+            t(
+              'نهاية الدورة القادمة',
+              'End of next Cycle',
+            ),
+
+            t(
+              'يحدد عند الاعتماد',
+              'To be determined upon approval',
+            ),
+          ],
+        ];
+
+  /*
+   * ============================================================
+   * SLIDE 1
+   *
+   * LEARNING OUTCOMES ACHIEVEMENT
+   * +
+   * GRADES DISTRIBUTION
+   * ============================================================
+   */
+
+  const page1: ReportPage = {
+    section: 'course-dashboard',
+
+    courseId: c.code,
+
+    title:
+      c.code && c.title
+        ? `${c.code} ${c.title}`
+        : c.code ||
+          c.title ||
+          'Course',
+
+    subtitle: [
+      c.program,
+      c.semester
+        ? `Level ${c.semester}`
+        : null,
+      c.academicYear,
+    ]
+      .filter(Boolean)
+      .join(' • '),
+
+    /*
+     * LEARNING OUTCOMES ACHIEVEMENT
+     *
+     * Target + Actual are stacked
+     * like the 2024-2025 comprehensive report.
+     */
+    chart: {
+      metric: 'mean',
+
+      label: 'Target',
+
+      comparisonLabel: 'Actual',
+
+      note:
+        'LEARNING OUTCOMES ACHIEVEMENT',
+
+      categories: c.outcomes.map(
+        (o) => o.code,
+      ),
+
+      values: c.outcomes.map(
+        (o) => o.target,
+      ),
+
+      comparisonValues:
+        c.outcomes.map(
+          (o) => o.actual,
         ),
-        widths: [3, 0.6, 0.8, 1.4, 0.9, 1.9],
-        headers: [
-          t('السؤال', 'Question'),
-          t('صحيح', 'Valid'),
-          t('المتوسط', 'Mean'),
-          t('تصنيفه', 'Mean class'),
-          t('الإيجابية', 'Positive'),
-          t('تصنيفها', 'Positive class'),
-        ],
-        rows: qs
-          .slice(i, i + 8)
-          .map((q) => [
-            `${q.id} · ${q[lang]}`,
-            f(g.questions[q.id]?.valid ?? 0, 0) +
-              ((g.questions[q.id]?.valid ?? 0) < 10 ? ' *' : ''),
-            f(g.questions[q.id]?.mean ?? null),
-            bandText(g.questions[q.id]?.meanBand ?? null),
-            pct(g.questions[q.id]?.positivity ?? null),
-            bandText(g.questions[q.id]?.positivityBand ?? null),
-          ]),
-      });
+
+      valid: c.outcomes.map(
+        (o) => o.target ?? 0,
+      ),
+
+      /*
+       * Target + Actual are stacked,
+       * therefore the scale can reach 200.
+       */
+      max: 200,
+
+      stacked: true,
+    },
+
+    /*
+     * GRADES DISTRIBUTION
+     */
+    secondaryChart: {
+      metric: 'mean',
+
+      label: "Student's Count",
+
+      note:
+        'GRADES DISTRIBUTION',
+
+      categories:
+        groupedGrades.map(
+          (g) => g.grade,
+        ),
+
+      values:
+        groupedGrades.map(
+          (g) => g.count,
+        ),
+
+      valid:
+        groupedGrades.map(
+          (g) => g.count,
+        ),
+
+      max: Math.max(
+        100,
+        ...groupedGrades.map(
+          (g) => g.count,
+        ),
+      ),
+    },
+
+    /*
+     * Course indicators
+     *
+     * Covered Planned Topics and CES
+     * remain N/A until traceable source data
+     * is connected to the course report.
+     */
+    metrics: [
+      {
+        label:
+          'Covered Planned Topics',
+        value: 'N/A',
+      },
+
+      {
+        label:
+          'CES Result',
+        value: 'N/A',
+      },
+
+      {
+        label:
+          'Students Count',
+
+        value:
+          c.started === null
+            ? 'N/A'
+            : `${c.started}`,
+      },
+
+      {
+        label:
+          'Completed the course',
+
+        value:
+          c.completed === null
+            ? 'N/A'
+            : `${c.completed}`,
+      },
+    ],
+
+    notes:
+      'The first course slide contains Learning Outcomes Achievement, Grades Distribution, and source-backed course indicators.',
   };
-  if (a.kind === 'historical') {
-    pages.push({
-      title: t('النتائج التاريخية', 'Historical results'),
-      lines: [
-        t(
-          'القيم من خلايا المصدر؛ لا تعاد معاملتها كاستجابات خام أو دمجها بمتوسط غير موزون.',
-          'Values are source aggregates, not individual responses; no unweighted overall average is created.',
-        ),
-      ],
-    });
-    const records = a.historical || [];
-    const sections = new Map<string, typeof records>();
-    for (const r of records) {
-      const key = r.program + '\n' + r.survey;
-      if (!sections.has(key)) sections.set(key, []);
-      sections.get(key)!.push(r);
-    }
-    for (const section of sections.values()) {
-      const years = [...new Set(section.map((r) => r.year))].sort(
-        (a, b) => a - b,
-      );
-      const sourceRows = new Map<
-        string,
-        { label: string; values: Map<number, number> }
-      >();
-      for (const r of section) {
-        const key = r.sheet + '!' + r.cell.replace(/^[A-Z]+/, '');
-        if (!sourceRows.has(key))
-          sourceRows.set(key, {
-            label: [r.question, r.label].filter(Boolean).join(' · '),
-            values: new Map(),
-          });
-        sourceRows.get(key)!.values.set(r.year, r.value);
-      }
-      const rows = [...sourceRows.values()].map((r) => [
-        r.label,
-        ...years.map((y) => f(r.values.get(y) ?? null)),
-      ]);
-      for (let i = 0; i < rows.length; i += 8)
-        pages.push({
-          title: section[0].program,
-          subtitle: section[0].survey,
-          headers: [t('السؤال', 'Question'), ...years.map(String)],
-          rows: rows.slice(i, i + 8),
-          widths: [4.8, ...years.map(() => 3.8 / years.length)],
-        });
-    }
-    return paginateTables(pages);
-  }
-  pages.push(summary(g, t('ملخص النتائج', 'Results overview')));
-  questionPages(g);
-  if (g.id === 'all') {
-    for (const p of a.programs) {
-      pages.push(summary(p, p.name));
-      questionPages(p);
-      for (const l of p.levels || []) {
-        pages.push(summary(l, t('المستوى ', 'Level ') + l.level));
-        for (const c of l.courses || []) {
-          pages.push(summary(c, c.name));
-          questionPages(c);
-        }
-      }
-    }
-  }
-  const courses =
-    g.id === 'all'
-      ? a.programs.flatMap((p) => p.courses || [])
-      : g.courses || [];
-  const priority = courses.filter((c) => c.priority);
-  for (let i = 0; a.type === 'CES' && i < Math.max(1, priority.length); i += 8)
-    pages.push({
-      title: t('أولوية التحسين', 'Improvement priorities'),
-      subtitle: t(
-        'إيجابية Q15 أقل من 60% · * عينة أقل من 10',
-        'Q15 positivity below 60% · * sample below 10',
-      ),
-      headers: [
-        t('المقرر', 'Course'),
-        t('البرنامج', 'Program'),
-        t('الاستجابات', 'Responses'),
-        t('الاستجابة %', 'Response %'),
-        'Q15',
-      ],
-      widths: [2.6, 1.5, 1.2, 1.7, 1.6],
-      rows: priority
-        .slice(i, i + 8)
-        .map((c) => [
-          c.code,
-          c.program,
-          String(c.rows) + (c.smallSample ? ' *' : ''),
-          pct(c.responseRate),
-          pct(c.questions.Q15.positivity),
-        ]),
-      lines: priority.length
-        ? undefined
-        : [
-            t(
-              'لا توجد مقررات تحقق شرط أولوية التحسين.',
-              'No courses meet the improvement-priority threshold.',
-            ),
-          ],
-    });
-  if (g.id === 'all')
-    for (const c of a.comments) {
-      pages.push({
-        title:
-          t('الأسئلة المفتوحة', 'Open-ended responses') + ' · ' + c.question,
-        subtitle: t(
-          'أكثر الإجابات تكرارًا — دون تحويلها إلى درجات',
-          'Most frequent responses — never converted to scores',
-        ),
-        lines: [
-          `${t('إجابات نصية', 'Text responses')}: ${c.count}`,
-          ...c.top
-            .slice(0, 6)
-            .map((r) => `${r.count} × ${r.text.slice(0, 280)}`),
-        ],
-      });
-    }
-  pages.push({
-    title: t(
-      'قواعد الحساب وجودة البيانات',
-      'Calculation rules and data quality',
-    ),
-    lines: [
+
+  /*
+   * ============================================================
+   * SLIDE 2
+   *
+   * ACTION PLAN
+   * ============================================================
+   */
+
+  const page2: ReportPage = {
+    section:
+      'course-improvement-plan',
+
+    courseId: c.code,
+
+    title:
+      'ACTION PLAN',
+
+    subtitle:
+      c.code && c.title
+        ? `${c.code} ${c.title}`
+        : c.code ||
+          c.title ||
+          'Course',
+
+    bannerTitle:
+      c.academicYear
+        ? `${c.academicYear} Action Plan`
+        : 'Action Plan',
+
+    headers: [
       t(
-        'المصدر الأساسي: RawData. الملخصات للمطابقة فقط.',
-        'Source: RawData. Summary sheets are verification only.',
+        'التوصيات',
+        'Recommendations',
       ),
+
       t(
-        'المتوسط = مجموع الدرجات الصحيحة ÷ عددها.',
-        'Mean = sum of valid scores / valid score count.',
+        'الإجراءات',
+        'Actions',
       ),
-      `${t('الإيجابية', 'Positivity')}: ${a.positive}–${a.max} · ${t('المقياس', 'Scale')}: ${a.min}–${a.max}`,
+
       t(
-        'الفراغ والنص والقيم خارج المقياس لا تدخل في المقام.',
-        'Blank, text and out-of-range scores are excluded from denominators.',
+        'مسؤولية التنفيذ',
+        'Responsibility For Implementation',
       ),
+
       t(
-        'المتوسطات والنسب مجمعة بوزن الإجابات الصحيحة. التقريب عند العرض فقط.',
-        'Pooled metrics are weighted by valid answers. Rounding occurs only for display.',
+        'البداية',
+        'Start',
       ),
-      ...a.issues.map((i) => `${i.code}: ${i.count}`),
+
+      t(
+        'النهاية',
+        'End',
+      ),
+
+      t(
+        'الدعم المطلوب',
+        'Needed Support',
+      ),
     ],
-  });
-  return paginateTables(pages);
-}
-function textShape(
-  id: number,
-  text: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  size: number,
-  lang: Lang,
-  color = '1D1E34',
-  bold = false,
-) {
-  const e = (n: number) => Math.round(n * 914400);
-  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Report ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${e(x)}" y="${e(y)}"/><a:ext cx="${e(w)}" cy="${e(h)}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="40000" rIns="40000" tIns="18000" bIns="18000"><a:normAutofit/></a:bodyPr><a:lstStyle/>${text
-    .split('\n')
-    .map(
-      (line) =>
-        `<a:p><a:pPr algn="${lang === 'ar' ? 'r' : 'l'}" rtl="${lang === 'ar' ? 1 : 0}"/><a:r><a:rPr lang="${lang === 'ar' ? 'ar-SA' : 'en-US'}" sz="${size * 100}" b="${bold ? 1 : 0}"><a:solidFill><a:srgbClr val="${color}"/></a:solidFill><a:latin typeface="Arial"/><a:ea typeface="Arial"/><a:cs typeface="Arial"/></a:rPr><a:t>${xml(line)}</a:t></a:r><a:endParaRPr lang="${lang === 'ar' ? 'ar-SA' : 'en-US'}"/></a:p>`,
-    )
-    .join('')}</p:txBody></p:sp>`;
-}
-export async function makePptx(pages: Page[], lang: Lang) {
-  const zip = new JSZip();
-  const paths: string[] = [];
-  for (const [path, data] of Object.entries(theme.parts)) {
-    if (path.includes('theme2')) continue;
-    zip.file(path, data);
-    paths.push(path);
-  }
-  for (const [path, data] of Object.entries(theme.media))
-    zip.file(path, data, { base64: true });
-  const rel = (id: string, type: string, target: string) =>
-    `<Relationship Id="${id}" Type="${R}/${type}" Target="${target}"/>`;
-  let slideList = '',
-    presentationRels = rel(
-      'rId1',
-      'slideMaster',
-      'slideMasters/slideMaster1.xml',
-    );
-  let chartCount = 0;
-  for (const [i, page] of pages.entries()) {
-    let shape = 1001,
-      body = '';
-    let extraRels = '';
-    if (page.cover) {
-      body += textShape(
-        shape++,
-        page.title,
-        1.17,
-        3.65,
-        3.35,
-        1.25,
-        25,
-        lang,
-        'FFFFFF',
-        true,
-      );
-      body += textShape(
-        shape++,
-        page.subtitle || '',
-        1.17,
-        5.05,
-        3.35,
-        0.65,
-        16,
-        lang,
-        'FFFFFF',
-      );
-      body += textShape(
-        shape++,
-        (page.lines || []).join('\n'),
-        1.17,
-        6.02,
-        3.35,
-        0.8,
-        12,
-        lang,
-        'FFFFFF',
-      );
-    } else {
-      if (page.section === 'course-dashboard') {
-  body += textShape(
-    shape++,
-    page.title,
-    1.2,
-    1.05,
-    8.0,
-    0.42,
-    18,
-    'en',
-    'C4312E',
-    true,
-  );
 
-  if (page.subtitle) {
-    body += textShape(
-      shape++,
-      page.subtitle,
-      1.2,
-      1.52,
-      8.0,
-      0.30,
-      10,
-      'en',
-      '57667B',
-      false,
-    );
-  }
-} else if (page.section === 'course-improvement-plan') {
-  body += textShape(
-    shape++,
-    page.title,
-    1.2,
-    1.05,
-    8.0,
-    0.42,
-    18,
-    'en',
-    '4B4B4B',
-    true,
-  );
+    widths: [
+      2.05,
+      2.35,
+      1.45,
+      0.9,
+      0.9,
+      0.95,
+    ],
 
-  if (page.subtitle) {
-    body += textShape(
-      shape++,
-      page.subtitle,
-      1.2,
-      1.52,
-      8.0,
-      0.30,
-      10,
-      'en',
-      'C4312E',
-      true,
-    );
-  }
-} else {
-  body += textShape(
-    shape++,
-    page.title,
-    0.97,
-    1.05,
-    8.55,
-    0.65,
-    22,
-    lang,
-    '32395A',
-    true,
-  );
+    rows:
+      improvementRows,
 
-  if (page.subtitle) {
-    body += textShape(
-      shape++,
-      page.subtitle,
-      0.97,
-      1.73,
-      8.55,
-      0.5,
-      12,
-      lang,
-      '57667B',
-    );
-  }
-}
-      let y = 2.27;
-      if (
-  page.section === 'course-dashboard' &&
-  page.chart &&
-  page.secondaryChart
-) {
-          // ------------------------------------------------------------
-  // Course dashboard layout
-  // Slide 1:
-  // 1. Learning Outcomes Achievement
-  // 2. Grades Distribution
-  // 3. Course KPI cards
-  // ------------------------------------------------------------
-
-  body += textShape(
-  shape++,
-  'LEARNING OUTCOMES ACHIEVEMENT',
-  1.0,
-  2.00,
-  8.4,
-  0.28,
-  11,
-  'en',
-  '4B4B4B',
-  true,
-);
-
-  chartCount++;
-  const learningChartRelId = `rIdChart${chartCount}`;
-
-  const learningChart = await nativeChart(
-    page.chart,
-    lang,
-    chartCount,
-    {
-      x: 1.0,
-      y: 2.23,
-      w: 8.4,
-      h: 1.65,
-      relId: learningChartRelId,
-    },
-  );
-
-  zip.file(
-    `ppt/charts/chart${chartCount}.xml`,
-    learningChart.chart,
-  );
-
-  zip.file(
-    `ppt/charts/_rels/chart${chartCount}.xml.rels`,
-    learningChart.relationship,
-  );
-
-  zip.file(
-    `ppt/embeddings/chart${chartCount}.xlsx`,
-    learningChart.workbook,
-  );
-
-  paths.push(
-    `ppt/charts/chart${chartCount}.xml`,
-  );
-
-  extraRels += rel(
-    learningChartRelId,
-    'chart',
-    `../charts/chart${chartCount}.xml`,
-  );
-
-  body += learningChart.frame;
-
-  body += textShape(
-    shape++,
-    'GRADES DISTRIBUTION',
-    1.0,
-    4.12,
-    8.4,
-    0.28,
-    11,
-    'en',
-    '32395A',
-    true,
-  );
-
-  chartCount++;
-  const gradesChartRelId = `rIdChart${chartCount}`;
-
-  const gradesChart = await nativeChart(
-    page.secondaryChart,
-    lang,
-    chartCount,
-    {
-      x: 1.0,
-      y: 4.40,
-      w: 8.4,
-      h: 1.35,
-      relId: gradesChartRelId,
-    },
-  );
-
-  zip.file(
-    `ppt/charts/chart${chartCount}.xml`,
-    gradesChart.chart,
-  );
-
-  zip.file(
-    `ppt/charts/_rels/chart${chartCount}.xml.rels`,
-    gradesChart.relationship,
-  );
-
-  zip.file(
-    `ppt/embeddings/chart${chartCount}.xlsx`,
-    gradesChart.workbook,
-  );
-
-  paths.push(
-    `ppt/charts/chart${chartCount}.xml`,
-  );
-
-  extraRels += rel(
-    gradesChartRelId,
-    'chart',
-    `../charts/chart${chartCount}.xml`,
-  );
-
-  body += gradesChart.frame;
-
-  if (page.metrics?.length) {
-    const cardWidth = 2.0;
-    const gap = 0.15;
-    const startX = 1.0;
-
-    page.metrics.slice(0, 4).forEach((metric, index) => {
-      const x = startX + index * (cardWidth + gap);
-
-      body += textShape(
-        shape++,
-        metric.label,
-        x,
-        5.95,
-        cardWidth,
-        0.22,
-        8,
-        'en',
-        '57667B',
-        true,
-      );
-
-      body += textShape(
-        shape++,
-        metric.value,
-        x,
-        6.20,
-        cardWidth,
-        0.42,
-        17,
-        'en',
-        '32395A',
-        true,
-      );
-    });
-  }
-
-  y = 6.75;
-      } else if (page.chart) {
-        chartCount++;
-        const chart = await nativeChart(page.chart, lang, chartCount);
-        zip.file(`ppt/charts/chart${chartCount}.xml`, chart.chart);
-        zip.file(
-          `ppt/charts/_rels/chart${chartCount}.xml.rels`,
-          chart.relationship,
-        );
-        zip.file(`ppt/embeddings/chart${chartCount}.xlsx`, chart.workbook);
-        paths.push(`ppt/charts/chart${chartCount}.xml`);
-        extraRels += rel(
-          'rIdChart',
-          'chart',
-          `../charts/chart${chartCount}.xml`,
-        );
-        body += chart.frame;
-        const values = page.chart.values.map((v) =>
-          v === null
-            ? lang === 'ar'
-              ? 'غير متاح'
-              : 'N/A'
-            : formatMetric(v, page.chart!.metric === 'mean' ? 2 : 1, lang) +
-              (page.chart!.metric === 'positivity' ? '%' : ''),
-        );
-        const rows = [
-          ['Q', ...page.chart.categories],
-          [
-            page.chart.label || (page.chart.metric === 'mean' ? 'Mean' : '%'),
-            ...values,
-          ],
-          [page.chart.sampleLabel || 'n', ...page.chart.valid.map(String)],
-        ];
-        body += nativeTable(
-          shape++,
-          rows,
-          [
-            0.6,
-            ...page.chart.categories.map(
-              () => 8 / page.chart!.categories.length,
-            ),
-          ],
-          [0.31, 0.31, 0.31],
-          lang,
-          5.8,
-          8,
-          0.95,
-          'en',
-        );
-        body += textShape(
-          shape++,
-          page.chart.note ||
-            (lang === 'ar'
-              ? 'n = الإجابات الصحيحة لكل سؤال. النتائج الأقل من 10 تُفسر بحذر.'
-              : 'n = valid answers per question. Interpret results below 10 cautiously.'),
-          1.02,
-          6.78,
-          8.42,
-          0.23,
-          9,
-          lang,
-        );
-      } else if (page.headers && page.rows?.length) {
-        const widths =
-          page.widths ||
-          (page.headers.length === 4
-            ? [4.8, 1.1, 1.1, 1.6]
-            : page.headers.map(() => 8.6 / page.headers!.length));
-        const heights = [
-          0.48,
-          ...page.rows.map((_, i) => page.rowHeights?.[i] || 0.48),
-        ];
-        body += nativeTable(
-          shape++,
-          [page.headers, ...page.rows],
-          widths,
-          heights,
-          lang,
-          y,
-        );
-        y += heights.reduce((s, h) => s + h, 0);
-      }
-      if (page.lines) {
-        body += textShape(
-          shape++,
-          page.lines.join('\n\n'),
-          1.02,
-          y,
-          8.42,
-          4.4,
-          14,
-          lang,
-        );
-      }
-      body += textShape(
-        shape++,
-        String(i + 1),
-        8.8,
-        7.05,
-        0.6,
-        0.25,
-        9,
-        'en',
-        '57667B',
-      );
-    }
-    if (page.notes) {
-      extraRels += rel(
-        'rIdNotes',
-        'notesSlide',
-        `../notesSlides/notesSlide${i + 1}.xml`,
-      );
-      zip.file(
-        `ppt/notesSlides/notesSlide${i + 1}.xml`,
-        `<p:notes xmlns:a="${A}" xmlns:r="${R}" xmlns:p="${P}"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes"/><p:cNvSpPr/><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${xml(page.notes)}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`,
-      );
-      zip.file(
-        `ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels`,
-        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel('rId1', 'slide', `../slides/slide${i + 1}.xml`)}</Relationships>`,
-      );
-      paths.push(`ppt/notesSlides/notesSlide${i + 1}.xml`);
-    }
-    const base = page.cover ? theme.cover : theme.content;
-    zip.file(
-      `ppt/slides/slide${i + 1}.xml`,
-      base.replace('</p:spTree>', body + '</p:spTree>'),
-    );
-    zip.file(
-      `ppt/slides/_rels/slide${i + 1}.xml.rels`,
-      (page.cover ? theme.coverRels : theme.contentRels).replace(
-        '</Relationships>',
-        extraRels + '</Relationships>',
-      ),
-    );
-    slideList += `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`;
-    presentationRels += rel(
-      'rId' + (i + 2),
-      'slide',
-      `slides/slide${i + 1}.xml`,
-    );
-    paths.push(`ppt/slides/slide${i + 1}.xml`);
-  }
-  zip.file(
-    'ppt/presentation.xml',
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:presentation xmlns:a="${A}" xmlns:r="${R}" xmlns:p="${P}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slideList}</p:sldIdLst><p:sldSz cx="9144000" cy="6858000" type="screen4x3"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`,
-  );
-  zip.file(
-    'ppt/_rels/presentation.xml.rels',
-    `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${presentationRels}</Relationships>`,
-  );
-  zip.file(
-    '_rels/.rels',
-    `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rel('rId1', 'officeDocument', 'ppt/presentation.xml')}</Relationships>`,
-  );
-  const typeFor = (p: string) =>
-    p.includes('/charts/')
-      ? 'chart'
-      : p.includes('/notesSlides/')
-        ? 'notesSlide'
-        : p.includes('/slides/')
-          ? 'slide'
-          : p.includes('/slideMasters/')
-            ? 'slideMaster'
-            : p.includes('/slideLayouts/')
-              ? 'slideLayout'
-              : p.includes('/theme/')
-                ? 'theme'
-                : null;
-  const overrides = paths
-    .filter((p) => !p.endsWith('.rels'))
-    .map((p) => {
-      const type = typeFor(p);
-      return type
-        ? `<Override PartName="/${p}" ContentType="application/vnd.openxmlformats-officedocument.${type === 'theme' ? 'theme' : type === 'chart' ? 'drawingml.chart' : `presentationml.${type}`}+xml"/>`
-        : '';
-    })
-    .join('');
-  zip.file(
-    '[Content_Types].xml',
-    `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>${overrides}</Types>`,
-  );
-  return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-}
-export async function makeDocx(pages: Page[], lang: Lang) {
-  const rtl = lang === 'ar';
-  const paragraph = (text: string, heading = false) =>
-    new Paragraph({
-      bidirectional: rtl,
-      alignment: rtl ? AlignmentType.RIGHT : AlignmentType.LEFT,
-      heading: heading ? HeadingLevel.HEADING_1 : undefined,
-      spacing: { after: 160 },
-      children: [
-        new TextRun({
-          text,
-          font: 'Arial',
-          size: heading ? 30 : 22,
-          rightToLeft: rtl,
-          color: heading ? '32395A' : '1D1E34',
-        }),
-      ],
-    });
-  const children: (Paragraph | Table)[] = [];
-  for (const [pi, p] of pages.entries()) {
-    if (pi) children.push(new Paragraph({ children: [new PageBreak()] }));
-    children.push(paragraph(p.title, true));
-    if (p.subtitle) children.push(paragraph(p.subtitle));
-    for (const line of p.lines || []) children.push(paragraph(line));
-    if (p.chart) {
-      const rows = [
-        [
-          lang === 'ar' ? 'البند' : 'Item',
-          p.chart.label || (p.chart.metric === 'positivity' ? '%' : 'Mean'),
-          p.chart.sampleLabel || 'n',
-        ],
-        ...p.chart.categories.map((c, i) => [
-          c,
-          p.chart!.values[i] === null ? '—' : String(p.chart!.values[i]),
-          String(p.chart!.valid[i]),
-        ]),
-      ];
-      children.push(
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: rows.map(
-            (row, i) =>
-              new TableRow({
-                tableHeader: i === 0,
-                children: (rtl ? [...row].reverse() : row).map(
-                  (cell) =>
-                    new TableCell({
-                      children: [paragraph(cell)],
-                      shading: { fill: i === 0 ? 'D2DBE5' : 'FFFFFF' },
-                    }),
-                ),
-              }),
-          ),
-        }),
-      );
-      if (p.chart.note) children.push(paragraph(p.chart.note));
-    }
-    if (p.headers && p.rows?.length) {
-      children.push(
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [p.headers, ...p.rows].map(
-            (row, i) =>
-              new TableRow({
-                children: (rtl ? [...row].reverse() : row).map(
-                  (cell) =>
-                    new TableCell({
-                      shading: {
-                        fill: i === 0 ? 'D2DBE5' : i % 2 ? 'F3F6FA' : 'FFFFFF',
-                      },
-                      children: [paragraph(cell)],
-                    }),
-                ),
-              }),
-          ),
-        }),
-      );
-    }
-  }
-  return new Uint8Array(
-    await Packer.toArrayBuffer(
-      new Document({
-        creator: 'Survey Quality Hub',
-        title: 'Survey Quality Report',
-        sections: [
-          {
-            properties: {
-              page: {
-                margin: { top: 900, bottom: 900, left: 800, right: 800 },
-              },
-            },
-            children,
-          },
-        ],
-      }),
+    notes: t(
+      'خطة العمل مولدة بقواعد ثابتة دون استخدام AI استنادًا إلى نواتج التعلم الأقل من المستهدف. المسؤول والتوقيت والدعم المقترح تخضع للاعتماد الرسمي.',
+      'The action plan is generated using fixed rules without AI based on learning outcomes below target. Responsibility, timing, and required support remain subject to formal approval.',
     ),
-  );
+  };
+
+  /*
+   * Exactly TWO slides per course.
+   */
+  return [
+    page1,
+    page2,
+  ];
+}
 }
