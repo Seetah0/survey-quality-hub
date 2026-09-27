@@ -30,7 +30,7 @@ export type ReportPage = {
 
   title: string;
   subtitle?: string;
-
+bannerTitle?: string;
   cover?: boolean;
 
   headers?: string[];
