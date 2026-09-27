@@ -73,36 +73,31 @@ export async function nativeChart(
     relId?: string;
   },
 ) {
-  const template = templates[data.metric];
-
   const positive = data.metric === 'positivity';
 
   const values = data.values.map((v) =>
-    v === null ? null : positive ? v / 100 : v,
+    v === null
+      ? null
+      : positive
+        ? v / 100
+        : v,
   );
 
-  const comparisonValues = data.comparisonValues?.map((v) =>
-    v === null ? null : positive ? v / 100 : v,
-  );
+  const comparisonValues =
+    data.comparisonValues?.map((v) =>
+      v === null
+        ? null
+        : positive
+          ? v / 100
+          : v,
+    );
 
   const count = data.categories.length;
   const end = count + 1;
-  const format = positive ? '0.0%' : '0.00';
 
-  const comparisonLabel =
-    data.comparisonLabel ||
-    data.sampleLabel ||
-    (lang === 'ar' ? 'المستهدف' : 'Target');
-
-  const comparisonValue = comparisonValues
-    ? `<c:val><c:numRef><c:f>'Chart Data'!$C$2:$C$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${comparisonValues
-        .map((v, i) =>
-          v === null
-            ? ''
-            : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`,
-        )
-        .join('')}</c:numCache></c:numRef></c:val>`
-    : '';
+  const format = positive
+    ? '0.0%'
+    : '0.00';
 
   const label =
     data.label ||
@@ -114,186 +109,906 @@ export async function nativeChart(
         ? 'المتوسط'
         : 'Mean');
 
-  const category = `<c:cat><c:strRef><c:f>'Chart Data'!$A$2:$A$${end}</c:f><c:strCache><c:ptCount val="${count}"/>${data.categories
-    .map(
-      (q, i) =>
-        `<c:pt idx="${i}"><c:v>${esc(q)}</c:v></c:pt>`,
-    )
-    .join('')}</c:strCache></c:strRef></c:cat>`;
+  const comparisonLabel =
+    data.comparisonLabel ||
+    data.sampleLabel ||
+    (lang === 'ar'
+      ? 'المقارنة'
+      : 'Comparison');
 
-  const value = `<c:val><c:numRef><c:f>'Chart Data'!$B$2:$B$${end}</c:f><c:numCache><c:formatCode>${format}</c:formatCode><c:ptCount val="${count}"/>${values
-    .map((v, i) =>
-      v === null
-        ? ''
-        : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`,
-    )
-    .join('')}</c:numCache></c:numRef></c:val>`;
-  let chart = template.chartXml
-    .replace('<c:cat/>', category)
-    .replace('<c:val/>', value)
-    .replace(/<c:tx>[\s\S]*?<\/c:tx>/, `<c:tx><c:v>${esc(label)}</c:v></c:tx>`)
-    .replace(
-      /<c:lang val="[^"]+"\/>/,
-      `<c:lang val="${lang === 'ar' ? 'ar-SA' : 'en-US'}"/>`,
-    );
-  if (data.stacked) {
-  chart = chart.replace(
-    '<c:grouping val="clustered"/>',
-    '<c:grouping val="stacked"/>',
-  );
-}
-  if (comparisonValues) {
-  const secondSeries = `
+  /*
+   * ------------------------------------------------------------
+   * Category XML
+   * ------------------------------------------------------------
+   */
+
+  const categoryXml = `
+    <c:cat>
+      <c:strRef>
+        <c:f>'Chart Data'!$A$2:$A$${end}</c:f>
+
+        <c:strCache>
+          <c:ptCount val="${count}"/>
+
+          ${data.categories
+            .map(
+              (category, i) => `
+                <c:pt idx="${i}">
+                  <c:v>${esc(category)}</c:v>
+                </c:pt>
+              `,
+            )
+            .join('')}
+        </c:strCache>
+      </c:strRef>
+    </c:cat>
+  `;
+
+  /*
+   * ------------------------------------------------------------
+   * Primary value XML
+   * ------------------------------------------------------------
+   */
+
+  const primaryValueXml = `
+    <c:val>
+      <c:numRef>
+        <c:f>'Chart Data'!$B$2:$B$${end}</c:f>
+
+        <c:numCache>
+          <c:formatCode>${format}</c:formatCode>
+          <c:ptCount val="${count}"/>
+
+          ${values
+            .map((value, i) =>
+              value === null
+                ? ''
+                : `
+                  <c:pt idx="${i}">
+                    <c:v>${value}</c:v>
+                  </c:pt>
+                `,
+            )
+            .join('')}
+        </c:numCache>
+      </c:numRef>
+    </c:val>
+  `;
+
+  /*
+   * ------------------------------------------------------------
+   * Primary series
+   * ------------------------------------------------------------
+   */
+
+  const primarySeries = `
     <c:ser>
-      <c:idx val="1"/>
-      <c:order val="1"/>
+      <c:idx val="0"/>
+      <c:order val="0"/>
 
       <c:tx>
-        <c:v>${esc(comparisonLabel)}</c:v>
+        <c:v>${esc(label)}</c:v>
       </c:tx>
 
       <c:spPr>
-        <a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
-          <a:srgbClr val="AE871B"/>
+        <a:solidFill>
+          <a:srgbClr val="${data.stacked ? '2F5597' : '32395A'}"/>
         </a:solidFill>
 
-        <a:ln xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" w="0">
+        <a:ln w="0">
           <a:noFill/>
         </a:ln>
       </c:spPr>
 
-      ${category}
+      ${categoryXml}
 
-      ${comparisonValue}
+      ${primaryValueXml}
     </c:ser>
   `;
 
-  chart = chart.replace(
-    '<c:dLbls>',
-    `${secondSeries}<c:dLbls>`,
-  );
-}
-  const q15 = data.categories.indexOf('Q15');
-  chart = chart.replace(/<c:dPt>[\s\S]*?<\/c:dPt>/, (match) =>
-    q15 < 0 ? '' : match.replace('<c:idx val="14"/>', `<c:idx val="${q15}"/>`),
-  );
-  if (positive)
-    chart = chart.replace(/<c:dLbls>[\s\S]*?<\/c:dLbls>/, (labels) =>
-      labels.replace(/sz="1050"/g, 'sz="900"'),
-    );
-  if (!positive)
-    chart = chart
-      .replace('<c:max val="5"/>', `<c:max val="${data.max}"/>`)
-      .replace(
-        '<c:majorUnit val="1"/>',
-        `<c:majorUnit val="${Math.max(1, data.max / 5)}"/>`,
+  /*
+   * ------------------------------------------------------------
+   * Comparison series
+   * ------------------------------------------------------------
+   */
+
+  let comparisonSeries = '';
+
+  if (comparisonValues) {
+    const comparisonValueXml = `
+      <c:val>
+        <c:numRef>
+          <c:f>'Chart Data'!$C$2:$C$${end}</c:f>
+
+          <c:numCache>
+            <c:formatCode>${format}</c:formatCode>
+            <c:ptCount val="${count}"/>
+
+            ${comparisonValues
+              .map((value, i) =>
+                value === null
+                  ? ''
+                  : `
+                    <c:pt idx="${i}">
+                      <c:v>${value}</c:v>
+                    </c:pt>
+                  `,
+              )
+              .join('')}
+          </c:numCache>
+        </c:numRef>
+      </c:val>
+    `;
+
+    comparisonSeries = `
+      <c:ser>
+        <c:idx val="1"/>
+        <c:order val="1"/>
+
+        <c:tx>
+          <c:v>${esc(comparisonLabel)}</c:v>
+        </c:tx>
+
+        <c:spPr>
+          <a:solidFill>
+            <a:srgbClr val="C9C19A"/>
+          </a:solidFill>
+
+          <a:ln w="0">
+            <a:noFill/>
+          </a:ln>
+        </c:spPr>
+
+        ${categoryXml}
+
+        ${comparisonValueXml}
+      </c:ser>
+    `;
+  }
+
+  /*
+   * ------------------------------------------------------------
+   * Data labels
+   * ------------------------------------------------------------
+   */
+
+  const dataLabels = `
+    <c:dLbls>
+
+      <c:numFmt
+        formatCode="${format}"
+        sourceLinked="0"
+      />
+
+      <c:dLblPos val="outEnd"/>
+
+      <c:showLegendKey val="0"/>
+      <c:showVal val="1"/>
+      <c:showCatName val="0"/>
+      <c:showSerName val="0"/>
+      <c:showPercent val="0"/>
+      <c:showBubbleSize val="0"/>
+      <c:showLeaderLines val="0"/>
+
+      <c:txPr>
+        <a:bodyPr anchorCtr="1"/>
+        <a:lstStyle/>
+
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="900">
+
+              <a:solidFill>
+                <a:srgbClr val="32395A"/>
+              </a:solidFill>
+
+              <a:latin typeface="Arial"/>
+              <a:ea typeface="Arial"/>
+              <a:cs typeface="Arial"/>
+
+            </a:defRPr>
+          </a:pPr>
+        </a:p>
+      </c:txPr>
+
+    </c:dLbls>
+  `;
+
+  /*
+   * ------------------------------------------------------------
+   * Bar chart
+   * ------------------------------------------------------------
+   */
+
+  const grouping =
+    data.stacked
+      ? 'stacked'
+      : 'clustered';
+
+  const overlap =
+    data.stacked
+      ? 100
+      : 0;
+
+  const barChartXml = `
+    <c:barChart>
+
+      <c:barDir val="col"/>
+
+      <c:grouping val="${grouping}"/>
+
+      <c:varyColors val="0"/>
+
+      ${primarySeries}
+
+      ${comparisonSeries}
+
+      ${dataLabels}
+
+      <c:gapWidth val="80"/>
+
+      <c:overlap val="${overlap}"/>
+
+      <c:axId val="48650112"/>
+      <c:axId val="48672768"/>
+
+    </c:barChart>
+  `;
+
+  /*
+   * ------------------------------------------------------------
+   * Category axis
+   * ------------------------------------------------------------
+   */
+
+  const categoryAxisXml = `
+    <c:catAx>
+
+      <c:axId val="48650112"/>
+
+      <c:scaling>
+        <c:orientation val="minMax"/>
+      </c:scaling>
+
+      <c:delete val="0"/>
+
+      <c:axPos val="b"/>
+
+      <c:numFmt
+        formatCode="General"
+        sourceLinked="1"
+      />
+
+      <c:majorTickMark val="none"/>
+      <c:minorTickMark val="none"/>
+
+      <c:spPr>
+        <a:ln w="9525">
+          <a:solidFill>
+            <a:srgbClr val="D2DBE5"/>
+          </a:solidFill>
+        </a:ln>
+      </c:spPr>
+
+      <c:txPr>
+        <a:bodyPr anchorCtr="1"/>
+        <a:lstStyle/>
+
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="900">
+
+              <a:solidFill>
+                <a:srgbClr val="32395A"/>
+              </a:solidFill>
+
+              <a:latin typeface="Arial"/>
+              <a:ea typeface="Arial"/>
+              <a:cs typeface="Arial"/>
+
+            </a:defRPr>
+          </a:pPr>
+        </a:p>
+      </c:txPr>
+
+      <c:crossAx val="48672768"/>
+
+      <c:crosses val="autoZero"/>
+
+      <c:auto val="1"/>
+
+      <c:lblAlgn val="ctr"/>
+
+      <c:lblOffset val="100"/>
+
+    </c:catAx>
+  `;
+
+  /*
+   * ------------------------------------------------------------
+   * Value axis
+   * ------------------------------------------------------------
+   */
+
+  const majorUnit = positive
+    ? 0.2
+    : Math.max(
+        1,
+        data.max / 5,
       );
-  const book = new JSZip();
-  for (const [p, v] of Object.entries(template.workbookParts)) book.file(p, v);
-  const cell = (address: string, text: string) =>
+
+  const valueAxisXml = `
+    <c:valAx>
+
+      <c:axId val="48672768"/>
+
+      <c:scaling>
+        <c:orientation val="minMax"/>
+        <c:max val="${positive ? 1 : data.max}"/>
+        <c:min val="0"/>
+      </c:scaling>
+
+      <c:delete val="0"/>
+
+      <c:axPos val="l"/>
+
+      <c:majorGridlines>
+        <c:spPr>
+          <a:ln w="9525">
+            <a:solidFill>
+              <a:srgbClr val="D2DBE5"/>
+            </a:solidFill>
+          </a:ln>
+        </c:spPr>
+      </c:majorGridlines>
+
+      <c:numFmt
+        formatCode="${format}"
+        sourceLinked="0"
+      />
+
+      <c:majorTickMark val="none"/>
+      <c:minorTickMark val="none"/>
+
+      <c:spPr>
+        <a:ln w="0">
+          <a:noFill/>
+        </a:ln>
+      </c:spPr>
+
+      <c:txPr>
+        <a:bodyPr anchorCtr="1"/>
+        <a:lstStyle/>
+
+        <a:p>
+          <a:pPr>
+            <a:defRPr sz="900">
+
+              <a:solidFill>
+                <a:srgbClr val="32395A"/>
+              </a:solidFill>
+
+              <a:latin typeface="Arial"/>
+              <a:ea typeface="Arial"/>
+              <a:cs typeface="Arial"/>
+
+            </a:defRPr>
+          </a:pPr>
+        </a:p>
+      </c:txPr>
+
+      <c:crossAx val="48650112"/>
+
+      <c:crosses val="autoZero"/>
+
+      <c:crossBetween val="between"/>
+
+      <c:majorUnit val="${majorUnit}"/>
+
+    </c:valAx>
+  `;
+
+  /*
+   * ------------------------------------------------------------
+   * Legend
+   * ------------------------------------------------------------
+   */
+
+  const legendXml =
+    comparisonValues
+      ? `
+        <c:legend>
+
+          <c:legendPos val="t"/>
+
+          <c:layout/>
+
+          <c:overlay val="0"/>
+
+          <c:txPr>
+            <a:bodyPr/>
+            <a:lstStyle/>
+
+            <a:p>
+              <a:pPr>
+                <a:defRPr sz="900">
+
+                  <a:solidFill>
+                    <a:srgbClr val="32395A"/>
+                  </a:solidFill>
+
+                  <a:latin typeface="Arial"/>
+                  <a:ea typeface="Arial"/>
+                  <a:cs typeface="Arial"/>
+
+                </a:defRPr>
+              </a:pPr>
+            </a:p>
+          </c:txPr>
+
+        </c:legend>
+      `
+      : '';
+
+  /*
+   * ------------------------------------------------------------
+   * Full chart XML
+   * ------------------------------------------------------------
+   */
+
+  const chart = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+
+<c:chartSpace
+  xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+>
+
+  <c:lang val="${lang === 'ar' ? 'ar-SA' : 'en-US'}"/>
+
+  <c:chart>
+
+    <c:plotArea>
+
+      <c:layout/>
+
+      ${barChartXml}
+
+      ${categoryAxisXml}
+
+      ${valueAxisXml}
+
+      <c:spPr>
+        <a:solidFill>
+          <a:srgbClr val="FFFFFF"/>
+        </a:solidFill>
+
+        <a:ln w="0">
+          <a:noFill/>
+        </a:ln>
+      </c:spPr>
+
+    </c:plotArea>
+
+    ${legendXml}
+
+    <c:plotVisOnly val="1"/>
+
+    <c:dispBlanksAs val="gap"/>
+
+  </c:chart>
+
+  <c:spPr>
+    <a:solidFill>
+      <a:srgbClr val="FFFFFF"/>
+    </a:solidFill>
+
+    <a:ln w="0">
+      <a:noFill/>
+    </a:ln>
+  </c:spPr>
+
+  <c:externalData r:id="rIdChartSnapshot1">
+    <c:autoUpdate val="0"/>
+  </c:externalData>
+
+</c:chartSpace>`;
+
+  /*
+   * ------------------------------------------------------------
+   * Embedded workbook
+   * ------------------------------------------------------------
+   */
+
+  const template =
+    templates[data.metric];
+
+  const book =
+    new JSZip();
+
+  for (
+    const [path, value] of
+    Object.entries(
+      template.workbookParts,
+    )
+  ) {
+    book.file(
+      path,
+      value,
+    );
+  }
+
+  const cell = (
+    address: string,
+    text: string,
+  ) =>
     `<c r="${address}" t="inlineStr"><is><t>${esc(text)}</t></is></c>`;
-book.file(
-  'xl/worksheets/sheet1.xml',
-  `<worksheet xmlns="${S}">
-    <dimension ref="A1:D${end}"/>
 
-    <cols>
-      <col min="1" max="1" width="16" customWidth="1"/>
-      <col min="2" max="4" width="20" customWidth="1"/>
-    </cols>
+  const hasComparison =
+    Boolean(comparisonValues);
 
-    <sheetData>
+  const lastColumn =
+    hasComparison
+      ? 'D'
+      : 'C';
 
-      <row r="1">
-        ${cell('A1', 'Question')}
-        ${cell('B1', label)}
-        ${cell('C1', comparisonValues ? comparisonLabel : 'Valid answers')}
-        ${comparisonValues ? cell('D1', 'Valid answers') : ''}
-      </row>
+  const workbookRows =
+    data.categories
+      .map(
+        (category, i) => {
+          const row =
+            i + 2;
 
-      ${data.categories
-        .map(
-          (q, i) => `
-        <row r="${i + 2}">
-          ${cell('A' + (i + 2), q)}
-
-          ${
+          const primary =
             values[i] === null
-              ? `<c r="B${i + 2}"/>`
-              : `<c r="B${i + 2}" s="1"><v>${values[i]}</v></c>`
-          }
+              ? `<c r="B${row}"/>`
+              : `<c r="B${row}" s="1"><v>${values[i]}</v></c>`;
 
-          ${
-            comparisonValues
-              ? comparisonValues[i] === null
-                ? `<c r="C${i + 2}"/>`
-                : `<c r="C${i + 2}" s="1"><v>${comparisonValues[i]}</v></c>`
-              : `<c r="C${i + 2}"><v>${data.valid[i]}</v></c>`
-          }
+          const comparison =
+            hasComparison
+              ? comparisonValues![i] === null
+                ? `<c r="C${row}"/>`
+                : `<c r="C${row}" s="1"><v>${comparisonValues![i]}</v></c>`
+              : '';
 
-          ${
-            comparisonValues
-              ? `<c r="D${i + 2}"><v>${data.valid[i]}</v></c>`
-              : ''
-          }
+          const validColumn =
+            hasComparison
+              ? 'D'
+              : 'C';
+
+          const valid =
+            `<c r="${validColumn}${row}"><v>${data.valid[i] ?? 0}</v></c>`;
+
+          return `
+            <row r="${row}">
+              ${cell(
+                `A${row}`,
+                category,
+              )}
+
+              ${primary}
+
+              ${comparison}
+
+              ${valid}
+            </row>
+          `;
+        },
+      )
+      .join('');
+
+  const firstRow =
+    hasComparison
+      ? `
+        <row r="1">
+
+          ${cell(
+            'A1',
+            'Category',
+          )}
+
+          ${cell(
+            'B1',
+            label,
+          )}
+
+          ${cell(
+            'C1',
+            comparisonLabel,
+          )}
+
+          ${cell(
+            'D1',
+            'Valid answers',
+          )}
 
         </row>
-      `,
-        )
-        .join('')}
+      `
+      : `
+        <row r="1">
 
-    </sheetData>
+          ${cell(
+            'A1',
+            'Category',
+          )}
 
-  </worksheet>`,
-);
+          ${cell(
+            'B1',
+            label,
+          )}
+
+          ${cell(
+            'C1',
+            'Valid answers',
+          )}
+
+        </row>
+      `;
+
+  book.file(
+    'xl/worksheets/sheet1.xml',
+    `
+      <worksheet xmlns="${S}">
+
+        <dimension
+          ref="A1:${lastColumn}${end}"
+        />
+
+        <cols>
+
+          <col
+            min="1"
+            max="1"
+            width="16"
+            customWidth="1"
+          />
+
+          <col
+            min="2"
+            max="${hasComparison ? 4 : 3}"
+            width="20"
+            customWidth="1"
+          />
+
+        </cols>
+
+        <sheetData>
+
+          ${firstRow}
+
+          ${workbookRows}
+
+        </sheetData>
+
+      </worksheet>
+    `,
+  );
+
+  /*
+   * ------------------------------------------------------------
+   * Workbook styles
+   * ------------------------------------------------------------
+   */
+
   book.file(
     'xl/styles.xml',
-    `<styleSheet xmlns="${S}"><numFmts count="1"><numFmt numFmtId="164" formatCode="${format}"/></numFmts><fonts count="1"><font><sz val="11"/><name val="Arial"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`,
+    `
+      <styleSheet xmlns="${S}">
+
+        <numFmts count="1">
+
+          <numFmt
+            numFmtId="164"
+            formatCode="${format}"
+          />
+
+        </numFmts>
+
+        <fonts count="1">
+
+          <font>
+            <sz val="11"/>
+            <name val="Arial"/>
+          </font>
+
+        </fonts>
+
+        <fills count="2">
+
+          <fill>
+            <patternFill patternType="none"/>
+          </fill>
+
+          <fill>
+            <patternFill patternType="gray125"/>
+          </fill>
+
+        </fills>
+
+        <borders count="1">
+          <border/>
+        </borders>
+
+        <cellStyleXfs count="1">
+
+          <xf
+            numFmtId="0"
+            fontId="0"
+            fillId="0"
+            borderId="0"
+          />
+
+        </cellStyleXfs>
+
+        <cellXfs count="2">
+
+          <xf
+            numFmtId="0"
+            fontId="0"
+            fillId="0"
+            borderId="0"
+            xfId="0"
+          />
+
+          <xf
+            numFmtId="164"
+            fontId="0"
+            fillId="0"
+            borderId="0"
+            xfId="0"
+            applyNumberFormat="1"
+          />
+
+        </cellXfs>
+
+      </styleSheet>
+    `,
   );
-  const content = template.workbookParts['[Content_Types].xml'].replace(
-    '</Types>',
-    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+
+  /*
+   * ------------------------------------------------------------
+   * Workbook content types
+   * ------------------------------------------------------------
+   */
+
+  const contentTypes =
+    template.workbookParts[
+      '[Content_Types].xml'
+    ].replace(
+      '</Types>',
+      `
+        <Override
+          PartName="/xl/styles.xml"
+          ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"
+        />
+      </Types>
+      `,
+    );
+
+  book.file(
+    '[Content_Types].xml',
+    contentTypes,
   );
-  book.file('[Content_Types].xml', content);
+
+  /*
+   * ------------------------------------------------------------
+   * Workbook relationships
+   * ------------------------------------------------------------
+   */
+
   book.file(
     'xl/_rels/workbook.xml.rels',
-    template.workbookParts['xl/_rels/workbook.xml.rels'].replace(
+
+    template.workbookParts[
+      'xl/_rels/workbook.xml.rels'
+    ].replace(
       '</Relationships>',
-      `<Relationship Id="rIdStyles" Type="${R}/styles" Target="styles.xml"/></Relationships>`,
+      `
+        <Relationship
+          Id="rIdStyles"
+          Type="${R}/styles"
+          Target="styles.xml"
+        />
+      </Relationships>
+      `,
     ),
   );
-  const frameX = options?.x ?? 1.0;
-const frameY = options?.y ?? 2.25;
-const frameW = options?.w ?? 8.55;
-const frameH = options?.h ?? 3.35;
-const relId = options?.relId ?? 'rIdChart';
+
+  /*
+   * ------------------------------------------------------------
+   * Chart placement
+   * ------------------------------------------------------------
+   */
+
+  const frameX =
+    options?.x ?? 1.0;
+
+  const frameY =
+    options?.y ?? 2.25;
+
+  const frameW =
+    options?.w ?? 8.55;
+
+  const frameH =
+    options?.h ?? 3.35;
+
+  const relId =
+    options?.relId ??
+    'rIdChart';
+
+  /*
+   * ------------------------------------------------------------
+   * Return chart package
+   * ------------------------------------------------------------
+   */
+
   return {
     chart,
-    workbook: await book.generateAsync({
-      type: 'uint8array',
-      compression: 'DEFLATE',
-    }),
-    relationship: `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdChartSnapshot1" Type="${R}/package" Target="../embeddings/chart${number}.xlsx"/></Relationships>`,
-frame: `<p:graphicFrame>
-  <p:nvGraphicFramePr>
-    <p:cNvPr id="${2000 + number}" name="Editable Chart ${number}"/>
-    <p:cNvGraphicFramePr/>
-    <p:nvPr/>
-  </p:nvGraphicFramePr>
 
-  <p:xfrm>
-    <a:off x="${emu(frameX)}" y="${emu(frameY)}"/>
-    <a:ext cx="${emu(frameW)}" cy="${emu(frameH)}"/>
-  </p:xfrm>
+    workbook:
+      await book.generateAsync({
+        type: 'uint8array',
+        compression:
+          'DEFLATE',
+      }),
 
-  <a:graphic>
-    <a:graphicData uri="${C}">
-      <c:chart
-        xmlns:c="${C}"
-        xmlns:r="${R}"
-        r:id="${relId}"
-      />
-    </a:graphicData>
-  </a:graphic>
-</p:graphicFrame>`,  };
+    relationship: `
+      <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+
+        <Relationship
+          Id="rIdChartSnapshot1"
+          Type="${R}/package"
+          Target="../embeddings/chart${number}.xlsx"
+        />
+
+      </Relationships>
+    `,
+
+    frame: `
+      <p:graphicFrame>
+
+        <p:nvGraphicFramePr>
+
+          <p:cNvPr
+            id="${2000 + number}"
+            name="Editable Chart ${number}"
+          />
+
+          <p:cNvGraphicFramePr/>
+
+          <p:nvPr/>
+
+        </p:nvGraphicFramePr>
+
+        <p:xfrm>
+
+          <a:off
+            x="${emu(frameX)}"
+            y="${emu(frameY)}"
+          />
+
+          <a:ext
+            cx="${emu(frameW)}"
+            cy="${emu(frameH)}"
+          />
+
+        </p:xfrm>
+
+        <a:graphic>
+
+          <a:graphicData uri="${C}">
+
+            <c:chart
+              xmlns:c="${C}"
+              xmlns:r="${R}"
+              r:id="${relId}"
+            />
+
+          </a:graphicData>
+
+        </a:graphic>
+
+      </p:graphicFrame>
+    `,
+  };
 }
