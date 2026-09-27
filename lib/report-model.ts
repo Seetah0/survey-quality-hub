@@ -22,6 +22,7 @@ export type ReportChart = {
   valid: number[];
 
   max: number;
+  stacked?: boolean;
 };
 export type ReportPage = {
   section?: string;
