@@ -441,30 +441,90 @@ export async function makePptx(pages: Page[], lang: Lang) {
         'FFFFFF',
       );
     } else {
-      body += textShape(
-        shape++,
-        page.title,
-        0.97,
-        1.05,
-        8.55,
-        0.65,
-        22,
-        lang,
-        '32395A',
-        true,
-      );
-      if (page.subtitle)
-        body += textShape(
-          shape++,
-          page.subtitle,
-          0.97,
-          1.73,
-          8.55,
-          0.5,
-          12,
-          lang,
-          '57667B',
-        );
+      if (page.section === 'course-dashboard') {
+  body += textShape(
+    shape++,
+    page.title,
+    1.2,
+    1.05,
+    8.0,
+    0.42,
+    18,
+    'en',
+    'C4312E',
+    true,
+  );
+
+  if (page.subtitle) {
+    body += textShape(
+      shape++,
+      page.subtitle,
+      1.2,
+      1.52,
+      8.0,
+      0.30,
+      10,
+      'en',
+      '57667B',
+      false,
+    );
+  }
+} else if (page.section === 'course-improvement-plan') {
+  body += textShape(
+    shape++,
+    page.title,
+    1.2,
+    1.05,
+    8.0,
+    0.42,
+    18,
+    'en',
+    '4B4B4B',
+    true,
+  );
+
+  if (page.subtitle) {
+    body += textShape(
+      shape++,
+      page.subtitle,
+      1.2,
+      1.52,
+      8.0,
+      0.30,
+      10,
+      'en',
+      'C4312E',
+      true,
+    );
+  }
+} else {
+  body += textShape(
+    shape++,
+    page.title,
+    0.97,
+    1.05,
+    8.55,
+    0.65,
+    22,
+    lang,
+    '32395A',
+    true,
+  );
+
+  if (page.subtitle) {
+    body += textShape(
+      shape++,
+      page.subtitle,
+      0.97,
+      1.73,
+      8.55,
+      0.5,
+      12,
+      lang,
+      '57667B',
+    );
+  }
+}
       let y = 2.27;
       if (
   page.section === 'course-dashboard' &&
@@ -480,17 +540,17 @@ export async function makePptx(pages: Page[], lang: Lang) {
   // ------------------------------------------------------------
 
   body += textShape(
-    shape++,
-    'LEARNING OUTCOMES ACHIEVEMENT',
-    1.0,
-    2.05,
-    8.4,
-    0.28,
-    11,
-    'en',
-    '32395A',
-    true,
-  );
+  shape++,
+  'LEARNING OUTCOMES ACHIEVEMENT',
+  1.0,
+  2.00,
+  8.4,
+  0.28,
+  11,
+  'en',
+  '4B4B4B',
+  true,
+);
 
   chartCount++;
   const learningChartRelId = `rIdChart${chartCount}`;
@@ -501,7 +561,7 @@ export async function makePptx(pages: Page[], lang: Lang) {
     chartCount,
     {
       x: 1.0,
-      y: 2.33,
+      y: 2.23,
       w: 8.4,
       h: 1.65,
       relId: learningChartRelId,
