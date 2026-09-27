@@ -456,7 +456,33 @@ subtitle: [
   label: 'Target',
 
   comparisonLabel: 'Actual 2024-2025',
+body += textShape(
+  shape++,
+  page.title,
+  2.1,
+  1.10,
+  6.2,
+  0.40,
+  20,
+  'en',
+  'C4312E',
+  true,
+);
 
+if (page.subtitle) {
+  body += textShape(
+    shape++,
+    page.subtitle,
+    2.1,
+    1.55,
+    6.2,
+    0.28,
+    10,
+    'en',
+    '57667B',
+    false,
+  );
+}
   note: 'LEARNING OUTCOMES ACHIEVEMENT',
 
   categories: c.outcomes.map((o) => o.code),
